@@ -1,6 +1,6 @@
 [project]
 name = "sqlserver-semantic-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "Semantic understanding MCP server for SQL Server"
 requires-python = ">=3.11"
 dependencies = [

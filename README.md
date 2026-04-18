@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0%2B-purple.svg)](https://modelcontextprotocol.io)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](pyproject.toml)
 [![繁體中文](https://img.shields.io/badge/lang-繁體中文-red.svg)](README.zh-TW.md)
 
 > **Semantic intelligence layer for SQL Server databases, exposed via MCP.**
