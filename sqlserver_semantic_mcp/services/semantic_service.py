@@ -21,6 +21,10 @@ _AUDIT_COL_PATTERNS = {
 
 _LOOKUP_NAME_COLS = {"code", "name", "label", "description", "value"}
 
+_COMMON_FILTER_SEMANTICS = frozenset({
+    "status", "type", "audit_timestamp", "soft_delete",
+})
+
 
 async def _load_table_structure(
     db_path: str, database: str, schema: str, table: str,
@@ -153,6 +157,39 @@ async def analyze_columns(
     await classify_table(db_path, database, schema, table)
     cached = await get_table_analysis(db_path, database, schema, table)
     return cached.get("column_analysis", []) if cached else []
+
+
+async def summarize_for_joining(
+    db_path: str, database: str, schema: str, table: str,
+) -> Optional[dict]:
+    """Return reasoning-ready info for joining against this table.
+
+    Shape: {table, pk, classification, join_candidates, common_filter_columns}
+    """
+    struct = await _load_table_structure(db_path, database, schema, table)
+    if struct is None:
+        return None
+
+    join_candidates = [
+        {"via_column": fk["column_name"],
+         "to_table": f"{fk['ref_schema']}.{fk['ref_table']}"}
+        for fk in struct["foreign_keys"]
+    ]
+
+    common_filter_columns = [
+        c["column_name"] for c in struct["columns"]
+        if (_column_semantic(c) or "") in _COMMON_FILTER_SEMANTICS
+    ]
+
+    classification = _classify(struct, table)
+
+    return {
+        "table": f"{schema}.{table}",
+        "pk": struct["primary_key"],
+        "classification": classification["type"],
+        "join_candidates": join_candidates,
+        "common_filter_columns": common_filter_columns,
+    }
 
 
 async def detect_lookup_tables(
