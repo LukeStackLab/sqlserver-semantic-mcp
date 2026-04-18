@@ -33,4 +33,8 @@ async def test_describe_object_uses_cache(tmp_path, monkeypatch):
 
     assert result["definition"].startswith("CREATE VIEW")
     assert "dbo.Users" in result["dependencies"]
-    assert "dbo.Users" in result["affected_tables"]
+    # P3: affected_tables now means write-targets. A SELECT-only view has none;
+    # dbo.Users appears in read_tables instead.
+    assert result["affected_tables"] == []
+    # Note: v1's body is "SELECT 1" (no FROM), so read_tables is also empty.
+    # For a richer read_tables test see test_object_write_intent.py.

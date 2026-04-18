@@ -188,6 +188,8 @@ def project_describe_object(
     standard: dict[str, Any] = {
         **brief,
         "definition_hash": obj.get("definition_hash"),
+        "read_tables": list(obj.get("read_tables", []) or []),
+        "write_tables": list(obj.get("write_tables", []) or []),
         "affected_tables": list(obj.get("affected_tables", []) or []),
         "description": obj.get("description"),
         "status": obj.get("status"),
