@@ -1,6 +1,6 @@
 from . import (
     metadata, policy, query, cache,
-    relationship, object_tool, semantic,
+    relationship, object_tool, semantic, metrics,
 )  # noqa: F401
 
 
@@ -12,6 +12,7 @@ _GROUP_REGISTRATIONS = {
     "relationship": relationship.register,
     "object":       object_tool.register,
     "semantic":     semantic.register,
+    "metrics":      metrics.register,
 }
 
 

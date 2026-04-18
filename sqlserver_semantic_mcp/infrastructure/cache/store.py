@@ -1,0 +1,145 @@
+from pathlib import Path
+import aiosqlite
+
+
+SCHEMA_TABLES = [
+    "schema_version",
+    "sc_tables", "sc_columns", "sc_primary_keys", "sc_foreign_keys",
+    "sc_indexes", "sc_objects", "sc_comments",
+    "sem_table_analysis", "sem_object_definitions",
+]
+
+SCHEMA_DDL = """
+CREATE TABLE IF NOT EXISTS schema_version (
+    database_name   TEXT PRIMARY KEY,
+    structural_hash TEXT NOT NULL,
+    object_hash     TEXT NOT NULL,
+    comment_hash    TEXT NOT NULL,
+    captured_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sc_tables (
+    database_name TEXT NOT NULL,
+    schema_name   TEXT NOT NULL,
+    table_name    TEXT NOT NULL,
+    PRIMARY KEY (database_name, schema_name, table_name)
+);
+
+CREATE TABLE IF NOT EXISTS sc_columns (
+    database_name    TEXT NOT NULL,
+    schema_name      TEXT NOT NULL,
+    table_name       TEXT NOT NULL,
+    column_name      TEXT NOT NULL,
+    data_type        TEXT NOT NULL,
+    max_length       INTEGER,
+    is_nullable      INTEGER NOT NULL,
+    column_default   TEXT,
+    ordinal_position INTEGER NOT NULL,
+    PRIMARY KEY (database_name, schema_name, table_name, column_name)
+);
+
+CREATE TABLE IF NOT EXISTS sc_primary_keys (
+    database_name TEXT NOT NULL,
+    schema_name   TEXT NOT NULL,
+    table_name    TEXT NOT NULL,
+    column_name   TEXT NOT NULL,
+    PRIMARY KEY (database_name, schema_name, table_name, column_name)
+);
+
+CREATE TABLE IF NOT EXISTS sc_foreign_keys (
+    database_name TEXT NOT NULL,
+    schema_name   TEXT NOT NULL,
+    table_name    TEXT NOT NULL,
+    column_name   TEXT NOT NULL,
+    ref_schema    TEXT NOT NULL,
+    ref_table     TEXT NOT NULL,
+    ref_column    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_fk_from
+    ON sc_foreign_keys (database_name, schema_name, table_name);
+CREATE INDEX IF NOT EXISTS idx_fk_to
+    ON sc_foreign_keys (database_name, ref_schema, ref_table);
+
+CREATE TABLE IF NOT EXISTS sc_indexes (
+    database_name  TEXT NOT NULL,
+    schema_name    TEXT NOT NULL,
+    table_name     TEXT NOT NULL,
+    index_name     TEXT NOT NULL,
+    is_unique      INTEGER NOT NULL,
+    is_primary_key INTEGER NOT NULL,
+    columns        TEXT NOT NULL,
+    PRIMARY KEY (database_name, schema_name, table_name, index_name)
+);
+
+CREATE TABLE IF NOT EXISTS sc_objects (
+    database_name TEXT NOT NULL,
+    schema_name   TEXT NOT NULL,
+    object_name   TEXT NOT NULL,
+    object_type   TEXT NOT NULL,
+    PRIMARY KEY (database_name, schema_name, object_name, object_type)
+);
+
+CREATE TABLE IF NOT EXISTS sc_comments (
+    database_name TEXT NOT NULL,
+    schema_name   TEXT NOT NULL,
+    object_name   TEXT NOT NULL,
+    column_name   TEXT NOT NULL DEFAULT '',
+    description   TEXT NOT NULL,
+    PRIMARY KEY (database_name, schema_name, object_name, column_name)
+);
+
+CREATE TABLE IF NOT EXISTS sem_table_analysis (
+    database_name   TEXT NOT NULL,
+    schema_name     TEXT NOT NULL,
+    table_name      TEXT NOT NULL,
+    structural_hash TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    classification  TEXT,
+    column_analysis TEXT,
+    is_lookup       INTEGER,
+    computed_at     TEXT,
+    error_message   TEXT,
+    PRIMARY KEY (database_name, schema_name, table_name)
+);
+CREATE INDEX IF NOT EXISTS idx_sem_table_status
+    ON sem_table_analysis (status);
+
+CREATE TABLE IF NOT EXISTS sem_object_definitions (
+    database_name   TEXT NOT NULL,
+    schema_name     TEXT NOT NULL,
+    object_name     TEXT NOT NULL,
+    object_type     TEXT NOT NULL,
+    object_hash     TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    definition      TEXT,
+    dependencies    TEXT,
+    affected_tables TEXT,
+    computed_at     TEXT,
+    error_message   TEXT,
+    PRIMARY KEY (database_name, schema_name, object_name, object_type)
+);
+CREATE INDEX IF NOT EXISTS idx_sem_obj_status
+    ON sem_object_definitions (status);
+
+CREATE TABLE IF NOT EXISTS tool_metrics (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name       TEXT NOT NULL,
+    response_bytes  INTEGER NOT NULL,
+    array_length    INTEGER,
+    fields_returned INTEGER,
+    recorded_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tool_metrics_name
+    ON tool_metrics (tool_name);
+"""
+
+
+async def init_store(db_path: str) -> None:
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript(SCHEMA_DDL)
+        await db.commit()
+
+
+def connection(db_path: str):
+    return aiosqlite.connect(db_path)

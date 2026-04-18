@@ -38,6 +38,9 @@ class Config(BaseSettings):
     # ---- Tool surface ----
     tool_profile: str = "all"
 
+    # ---- Metrics ----
+    metrics_enabled: bool = True
+
 
 _config: Optional[Config] = None
 

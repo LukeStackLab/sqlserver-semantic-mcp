@@ -6,6 +6,7 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent
 
 from ..config import Config, get_config
+from ..services import metrics_service
 from ..services.policy_service import PolicyService
 from ..services.query_service import QueryService
 from .compact import compact
@@ -58,15 +59,21 @@ async def _call_tool(name: str, arguments: dict) -> list[TextContent]:
     _t, handler = _TOOL_REGISTRY[name]
     try:
         result = await handler(arguments or {})
-        return [TextContent(
-            type="text",
-            text=json.dumps(
-                compact(result),
-                ensure_ascii=False,
-                default=str,
-                separators=(",", ":"),
-            ),
-        )]
+        shaped = compact(result)
+        text = json.dumps(
+            shaped, ensure_ascii=False, default=str, separators=(",", ":"),
+        )
+        if get_config().metrics_enabled:
+            try:
+                await metrics_service.record_metric(
+                    get_config().cache_path, name,
+                    response_bytes=len(text.encode("utf-8")),
+                    array_length=len(shaped) if isinstance(shaped, list) else None,
+                    fields_returned=len(shaped) if isinstance(shaped, dict) else None,
+                )
+            except Exception:
+                logger.exception("metrics_service.record_metric failed")
+        return [TextContent(type="text", text=text)]
     except Exception as e:
         logger.exception("Tool %s raised", name)
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
