@@ -16,7 +16,8 @@ def test_config_defaults(monkeypatch):
     assert cfg.max_rows_returned == 1000
 
 
-def test_config_windows_auth(monkeypatch):
+def test_config_windows_auth(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # isolate from local .env
     reset_config()
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "localhost")
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "testdb")

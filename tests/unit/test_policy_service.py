@@ -35,6 +35,7 @@ def test_validate_blocked(monkeypatch):
 
 
 def test_reload(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # isolate from local .env
     pf = tmp_path / "p.json"
     pf.write_text(json.dumps({
         "active_profile": "ro",
@@ -43,6 +44,7 @@ def test_reload(tmp_path, monkeypatch):
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
     monkeypatch.setenv("SEMANTIC_MCP_POLICY_FILE", str(pf))
+    monkeypatch.delenv("SEMANTIC_MCP_POLICY_PROFILE", raising=False)
     reset_config()
     svc = PolicyService()
     svc.load()
