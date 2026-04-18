@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0%2B-purple.svg)](https://modelcontextprotocol.io)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](pyproject.toml)
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 
 > **SQL Server 資料庫的語意智慧層,透過 MCP 對外提供。**
