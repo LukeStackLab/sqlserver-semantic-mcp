@@ -156,13 +156,25 @@ async def analyze_columns(
 
 
 async def detect_lookup_tables(
-    db_path: str, database: str,
+    db_path: str, database: str, *,
+    schemas: Optional[list[str]] = None,
+    keyword: Optional[str] = None,
+    confidence_min: float = 0.0,
 ) -> list[dict]:
     ver = await read_schema_version(db_path, database)
     current_hash = ver["structural_hash"] if ver else ""
 
     results: list[dict] = []
     need_classify: list[tuple[str, str]] = []
+
+    kw_lower = keyword.lower() if keyword else None
+
+    def passes_filter(s: str, t: str) -> bool:
+        if schemas and s not in schemas:
+            return False
+        if kw_lower and kw_lower not in f"{s}.{t}".lower():
+            return False
+        return True
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -172,7 +184,8 @@ async def detect_lookup_tables(
             (database,),
         )
         all_tables = [(r["schema_name"], r["table_name"])
-                      for r in await cur.fetchall()]
+                      for r in await cur.fetchall()
+                      if passes_filter(r["schema_name"], r["table_name"])]
 
         # Fast path: read ready+fresh lookup rows from cache
         cur = await db.execute(
@@ -203,10 +216,12 @@ async def detect_lookup_tables(
     for (s, t) in all_tables:
         if (s, t) in cached_hits:
             cls = cached_hits[(s, t)] or {"confidence": 0.75}
-            results.append({
-                "schema_name": s, "table_name": t,
-                "confidence": cls.get("confidence", 0.75),
-            })
+            conf = cls.get("confidence", 0.75)
+            if conf >= confidence_min:
+                results.append({
+                    "schema_name": s, "table_name": t,
+                    "confidence": conf,
+                })
             continue
         state = cache_state.get((s, t))
         # Needs classification if: no row, dirty/pending, or hash mismatch
@@ -216,8 +231,10 @@ async def detect_lookup_tables(
     for (s, t) in need_classify:
         c = await classify_table(db_path, database, s, t)
         if c.get("type") == "lookup":
-            results.append({
-                "schema_name": s, "table_name": t,
-                "confidence": c.get("confidence", 0.75),
-            })
+            conf = c.get("confidence", 0.75)
+            if conf >= confidence_min:
+                results.append({
+                    "schema_name": s, "table_name": t,
+                    "confidence": conf,
+                })
     return results

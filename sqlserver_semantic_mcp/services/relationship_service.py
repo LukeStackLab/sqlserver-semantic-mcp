@@ -113,11 +113,14 @@ async def find_join_path(
 async def get_dependency_chain(
     db_path: str, database: str, schema: str, table: str,
     max_depth: int = 10,
+    *, schemas: Optional[list[str]] = None,
 ) -> list[dict]:
     graph = await _load_fk_graph(db_path, database)
     start = (schema, table)
     visited: dict[tuple[str, str], int] = {start: 0}
     queue = deque([start])
+    allowed = set(schemas) if schemas else None
+
     while queue:
         node = queue.popleft()
         depth = visited[node]
@@ -126,6 +129,8 @@ async def get_dependency_chain(
         for edge in graph.get(node, []):
             nxt = (edge["to_schema"], edge["to_table"])
             if nxt not in visited:
+                if allowed is not None and nxt[0] not in allowed:
+                    continue
                 visited[nxt] = depth + 1
                 queue.append(nxt)
 

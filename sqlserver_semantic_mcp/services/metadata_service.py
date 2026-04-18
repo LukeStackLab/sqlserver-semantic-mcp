@@ -2,14 +2,31 @@ from typing import Optional
 import aiosqlite
 
 
-async def list_tables(db_path: str, database: str) -> list[dict]:
+async def list_tables(
+    db_path: str, database: str, *,
+    schemas: Optional[list[str]] = None,
+    keyword: Optional[str] = None,
+) -> list[dict]:
+    sql = ("SELECT schema_name, table_name FROM sc_tables "
+           "WHERE database_name = ?")
+    params: list = [database]
+
+    if schemas:
+        placeholders = ",".join("?" for _ in schemas)
+        sql += f" AND schema_name IN ({placeholders})"
+        params.extend(schemas)
+
+    if keyword:
+        sql += (" AND (LOWER(schema_name || '.' || table_name) "
+                "LIKE ? ESCAPE '\\')")
+        kw = keyword.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        params.append(f"%{kw}%")
+
+    sql += " ORDER BY schema_name, table_name"
+
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        cur = await db.execute(
-            "SELECT schema_name, table_name FROM sc_tables "
-            "WHERE database_name = ? ORDER BY schema_name, table_name",
-            (database,),
-        )
+        cur = await db.execute(sql, tuple(params))
         return [dict(r) for r in await cur.fetchall()]
 
 
