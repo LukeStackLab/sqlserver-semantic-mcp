@@ -1,5 +1,5 @@
 import json
-from mcp.types import Resource
+from mcp.types import Resource, ResourceTemplate
 from pydantic import AnyUrl
 
 from ...services import metadata_service, semantic_service, object_service
@@ -8,27 +8,30 @@ from ..app import app, get_context
 
 @app.list_resources()
 async def list_resources() -> list[Resource]:
-    ctx = get_context()
-    tables = await metadata_service.list_tables(
-        ctx.cfg.cache_path, ctx.cfg.mssql_database,
-    )
-    resources: list[Resource] = [
-        Resource(uri=AnyUrl("semantic://schema/tables"),
-                 name="All tables", mimeType="application/json"),
-        Resource(uri=AnyUrl("semantic://summary/database"),
-                 name="Database summary", mimeType="application/json"),
+    return [
+        Resource(
+            uri=AnyUrl("semantic://schema/tables"),
+            name="All tables", mimeType="application/json",
+        ),
+        Resource(
+            uri=AnyUrl("semantic://summary/database"),
+            name="Database summary", mimeType="application/json",
+        ),
     ]
-    for t in tables:
-        qualified = f"{t['schema_name']}.{t['table_name']}"
-        resources.append(Resource(
-            uri=AnyUrl(f"semantic://schema/tables/{qualified}"),
-            name=f"Table: {qualified}", mimeType="application/json",
-        ))
-        resources.append(Resource(
-            uri=AnyUrl(f"semantic://analysis/classification/{qualified}"),
-            name=f"Classification: {qualified}", mimeType="application/json",
-        ))
-    return resources
+
+
+@app.list_resource_templates()
+async def list_resource_templates() -> list[ResourceTemplate]:
+    return [
+        ResourceTemplate(
+            uriTemplate="semantic://schema/tables/{qualified}",
+            name="Table metadata", mimeType="application/json",
+        ),
+        ResourceTemplate(
+            uriTemplate="semantic://analysis/classification/{qualified}",
+            name="Table classification", mimeType="application/json",
+        ),
+    ]
 
 
 @app.read_resource()
