@@ -205,10 +205,24 @@ pip install -e ".[dev]"
 uv sync          # 或 uv sync --dev 包含開發依賴
 ```
 
-執行時依賴:`mcp`、`pymssql`、`pydantic`、`pydantic-settings`、`aiosqlite`。
+**不安裝直接執行**(uv project 模式):
+
+```bash
+uv run python -m sqlserver_semantic_mcp.main
+```
+
+執行時依賴:
+
+| 套件 | 角色 |
+|---|---|
+| `mcp` | MCP SDK(stdio transport) |
+| `pymssql` | SQL Server wire driver(包裝 FreeTDS) |
+| `pydantic` + `pydantic-settings` | 設定驗證、環境變數載入 |
+| `aiosqlite` | 雙層快取使用的 async SQLite |
+
 開發依賴:`pytest`、`pytest-asyncio`、`pytest-mock`。
 
-> **Linux 注意:** `pymssql` 連結 FreeTDS。若 `pip install` 因編譯錯誤失敗,請先安裝系統 header — 詳見英文 README 的 Troubleshooting。
+> **Linux 注意:** `pymssql` 連結 FreeTDS。若 `pip install` 因編譯錯誤失敗,請先安裝系統 header — 詳見下方[疑難排解](#疑難排解)。
 
 ---
 
@@ -254,9 +268,78 @@ uv sync          # 或 uv sync --dev 包含開發依賴
 
 ---
 
+## 連線情境
+
+把對應的區塊複製到你的 `.env` 檔(或 MCP client 設定中的 `env` 區塊)。
+
+### SQL 認證(預設)
+
+最常見的設定。需要 SQL Server 上啟用 SQL Server Authentication。
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=localhost
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_USER=sa
+SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword
+```
+
+### Windows 驗證
+
+省略 `MSSQL_USER` 與 `MSSQL_PASSWORD`;執行行程必須以具有 SQL Server 存取權的 Windows 帳戶啟動。在 `.env` 檔中具名實例需使用雙反斜線。
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=MY-PC\\SQLEXPRESS
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true
+```
+
+> Windows 驗證僅在 Windows 平台可用。pymssql 在 Linux 與 macOS 不支援 Windows 驗證 — 請改用 SQL 認證。
+
+### Azure SQL Database
+
+當伺服器名稱以 `.database.windows.net` 結尾時 TLS 會自動啟用,不需顯式設定 `MSSQL_ENCRYPT`。
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=yourserver.database.windows.net
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_USER=youradmin@yourserver
+SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword
+```
+
+### LocalDB(僅限 Windows)
+
+LocalDB 透過 named pipe 通訊,不需 TCP 連接埠。預設使用 Windows 驗證。
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=(localdb)\MSSQLLocalDB
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true
+```
+
+### 自訂 Policy 檔
+
+將 `SEMANTIC_MCP_POLICY_FILE` 指向你管理的 JSON policy 檔。未設定時會使用內建唯讀模式。
+
+```env
+SEMANTIC_MCP_POLICY_FILE=./config/policy.example.json
+SEMANTIC_MCP_POLICY_PROFILE=read_write_safe
+```
+
+完整 policy 檔格式與可用 profile 請見 [Policy 系統](#policy-系統)。
+
+### 自訂快取位置
+
+當對多個資料庫運行多個 server 實例,或預設 `./cache/` 目錄不可寫時可使用。
+
+```env
+SEMANTIC_MCP_CACHE_PATH=/var/lib/sqlserver-mcp/mydb.db
+```
+
+---
+
 ## Policy 系統
 
-若未提供 policy 檔,會採用內建的 **唯讀** profile:僅允許 `SELECT`,最多回傳 1000 列,拒絕多敘述查詢。
+**預設安全姿態:** 若未設定 policy 檔,server 採用內建的 **唯讀** 模式 — 不需任何設定即可生效。在此模式下:僅允許 `SELECT`、結果上限 1000 列、拒絕多敘述查詢,而且每個查詢仍會在抵達 `cursor.execute()` 前經過 policy 執行器。系統不存在不受限的 SQL 執行路徑。
 
 如需自訂 policy,請建立 JSON 檔(參考 `config/policy.example.json`)並將 `SEMANTIC_MCP_POLICY_FILE` 指向該檔:
 
@@ -287,6 +370,14 @@ uv sync          # 或 uv sync --dev 包含開發依賴
 **Constraints** — `require_where_for_update`、`require_where_for_delete`、`require_top_for_select`、`max_rows_returned`、`max_rows_affected`、`allow_multi_statement`、`query_timeout_seconds`
 
 **Scope** — `allowed_databases`、`allowed_schemas`、`allowed_tables`、`denied_tables`
+
+### Profile 快速對照
+
+| Profile | SELECT | INSERT | UPDATE | DELETE | 需要 WHERE | 列數上限 |
+|---|---|---|---|---|---|---|
+| `readonly`(內建預設) | Yes | No | No | No | N/A | 回傳 1000 列 |
+| `read_write_safe` | Yes | Yes | Yes | No | UPDATE 需 WHERE | 影響 100 列 |
+| `admin` | Yes | Yes | Yes | Yes | No | 影響 10 000 列 |
 
 > **安全提醒:** 當設定 `allowed_schemas` 時,若查詢引用的表未帶 schema 前綴(例如 `SELECT * FROM Users` 而非 `dbo.Users`)將被拒絕 — 無法以隱含預設值繞過 schema 級別的存取控制。
 
@@ -344,6 +435,20 @@ uv sync          # 或 uv sync --dev 包含開發依賴
 
 ## 啟動伺服器
 
+**使用安裝後的 console script**(在 `pip install -e .` 之後):
+
+```bash
+sqlserver-semantic-mcp
+```
+
+**透過 uv 執行**(無需安裝):
+
+```bash
+uv run python -m sqlserver_semantic_mcp.main
+```
+
+**直接以 Python 執行**(套件已在 `sys.path` 上時):
+
 ```bash
 python -m sqlserver_semantic_mcp.main
 ```
@@ -368,6 +473,35 @@ python -m sqlserver_semantic_mcp.main
 uv run --extra dev pytest tests/unit
 uv run --extra dev pytest tests/integration -m integration
 ```
+
+### 發佈版本(維護者)
+
+套件發佈於 PyPI,讓終端使用者可直接 `uvx sqlserver-semantic-mcp` 而不需 clone 專案。發佈流程:
+
+1. 在 `pyproject.toml` 中升 `version`(遵守語意化版本)。
+2. 更新 `docs/` 中的 changelog 與本 README 上方的版本徽章。
+3. Commit 並打 tag:
+   ```bash
+   git commit -am "chore: bump to vX.Y.Z"
+   git tag vX.Y.Z
+   git push origin main --tags
+   ```
+4. 在本機 build 並驗證 artifacts:
+   ```bash
+   uv build                       # 產出 dist/*.whl + dist/*.tar.gz
+   uvx --from twine twine check dist/*
+   ```
+5. (建議)先在 TestPyPI smoke test:
+   ```bash
+   uvx --from twine twine upload --repository testpypi dist/*
+   uvx --index-url https://test.pypi.org/simple/ sqlserver-semantic-mcp
+   ```
+6. 發佈到 PyPI:
+   ```bash
+   uv publish                     # 使用 UV_PUBLISH_TOKEN 或 ~/.pypirc
+   ```
+
+> 設定一次性的 PyPI API token:`export UV_PUBLISH_TOKEN=pypi-…`(或在 `~/.pypirc` 的 `[pypi]` 區塊配置)。
 
 ### 專案結構
 
@@ -403,6 +537,54 @@ sqlserver_semantic_mcp/
 - **單元測試** 使用記憶體或暫存目錄的 SQLite,並 mock pymssql。
 - **整合測試** 標記為 `@pytest.mark.integration`,未設定 `SEMANTIC_MCP_MSSQL_SERVER` 時跳過。
 - Pydantic 模型直接測試;infrastructure 層以 mocked connection 驗證。
+
+---
+
+## 疑難排解
+
+### Linux 上 pymssql / FreeTDS 安裝失敗
+
+`pymssql` 連結 FreeTDS。在 Debian/Ubuntu 上,執行 `pip install` 前先安裝必要系統套件:
+
+```bash
+sudo apt-get install -y libssl-dev libkrb5-dev freetds-dev
+pip install pymssql
+```
+
+Alpine / Docker 環境:`apk add freetds-dev openssl-dev krb5-dev`。
+
+### 「Cannot open server」或連線被拒
+
+- 確認 server 名稱與連接埠正確(`SEMANTIC_MCP_MSSQL_SERVER`、`SEMANTIC_MCP_MSSQL_PORT`)。
+- 在 SQL Server Configuration Manager 中檢查 TCP/IP 是否啟用。
+- 若使用具名實例(例如 `MY-PC\SQLEXPRESS`),確認 SQL Server Browser 服務正在執行,以動態解析連接埠。
+- 若使用非預設連接埠,請顯式設定 `SEMANTIC_MCP_MSSQL_PORT` — 連接埠固定時不需 SQL Server Browser。
+- 檢查防火牆規則:port 1433(或自訂連接埠)必須能從執行 MCP server 的機器連通。
+
+### 「Login failed for user」
+
+- 確認 `SEMANTIC_MCP_MSSQL_USER` 與 `SEMANTIC_MCP_MSSQL_PASSWORD` 正確。
+- 驗證 SQL Server 已啟用 SQL Server Authentication(Server Properties → Security → SQL Server and Windows Authentication mode)。
+- Azure SQL 視 driver 版本而定,使用者格式可能需為 `user@servername`。
+
+### Linux 或 macOS 無法使用 Windows 驗證
+
+pymssql 在非 Windows 平台不支援 Windows Authentication(Kerberos/NTLM)。請改用 SQL 認證(`MSSQL_USER` + `MSSQL_PASSWORD`)。`SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true` 僅在 Windows 上有效。
+
+### LocalDB 無法連線
+
+- LocalDB 僅限 Windows,且使用 named pipe 而非 TCP。
+- `SEMANTIC_MCP_MSSQL_SERVER` 必須採用 `(localdb)\MSSQLLocalDB` 格式(或你的實例名稱)。
+- 設定 `SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true`;LocalDB 預設不支援 SQL 認證。
+- 在 Windows 終端執行 `sqllocaldb info` 列出可用實例並確認其運行中。
+
+### Policy 檔找不到或被忽略
+
+當 policy 檔無法讀取時(缺失、無法存取或 JSON 損壞),server 會回退為內建唯讀模式並記錄警告。請檢查啟動 log 中含 `policy` 字樣的行。若 `SEMANTIC_MCP_POLICY_FILE` 設為相對路徑,會以行程工作目錄為基準解析 — 為避免歧義,建議使用絕對路徑。
+
+### 伺服器啟動但工具回傳空結果
+
+Structural Cache 可能尚未填入。檢查啟動 log 中的預熱進度。可呼叫 `refresh_schema_cache` MCP 工具強制重新整理。也請確認連線資料庫使用者具有 `VIEW DEFINITION` 權限;否則物件定義與註解不會出現在快取中。
 
 ---
 
