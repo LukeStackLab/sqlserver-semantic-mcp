@@ -15,6 +15,115 @@ AI agents don't need raw `execute_sql`. They need to understand schema structure
 
 ---
 
+## Quick Start
+
+> **30 seconds to a running server.** Fill in your credentials, start the server, point Claude Desktop at it.
+
+### Step 1 — Install
+
+**Option A — pip editable install (recommended for local dev):**
+
+```bash
+git clone https://github.com/lukedev999-boom/sqlserver-semantic-mcp.git
+cd sqlserver-semantic-mcp
+pip install -e ".[dev]"
+```
+
+**Option B — uv:**
+
+```bash
+git clone https://github.com/lukedev999-boom/sqlserver-semantic-mcp.git
+cd sqlserver-semantic-mcp
+uv sync
+```
+
+### Step 2 — Configure
+
+Copy the example env file and fill in your SQL Server credentials:
+
+```bash
+cp .env.example .env
+```
+
+Minimum required settings in `.env`:
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=localhost
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_USER=sa
+SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword
+```
+
+All other settings are optional and documented in the [Configuration](#configuration) section.
+
+### Step 3 — Run
+
+If you installed via pip (Option A), the `sqlserver-semantic-mcp` console script is on your PATH:
+
+```bash
+sqlserver-semantic-mcp
+```
+
+If you used uv (Option B):
+
+```bash
+uv run python -m sqlserver_semantic_mcp.main
+```
+
+The server speaks MCP over stdio. You should see startup log lines confirming cache initialisation and tool registration.
+
+### Step 4 — Connect to Claude Desktop
+
+Open your Claude Desktop MCP config file:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+**If you installed via pip (the `sqlserver-semantic-mcp` binary is on your PATH):**
+
+```json
+{
+  "mcpServers": {
+    "sqlserver-semantic-mcp": {
+      "command": "sqlserver-semantic-mcp",
+      "env": {
+        "SEMANTIC_MCP_MSSQL_SERVER": "localhost",
+        "SEMANTIC_MCP_MSSQL_DATABASE": "YourDatabase",
+        "SEMANTIC_MCP_MSSQL_USER": "sa",
+        "SEMANTIC_MCP_MSSQL_PASSWORD": "YourPassword"
+      }
+    }
+  }
+}
+```
+
+**If you are using uv (specify the full project path):**
+
+```json
+{
+  "mcpServers": {
+    "sqlserver-semantic-mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project", "/path/to/sqlserver-semantic-mcp",
+        "python", "-m", "sqlserver_semantic_mcp.main"
+      ],
+      "env": {
+        "SEMANTIC_MCP_MSSQL_SERVER": "localhost",
+        "SEMANTIC_MCP_MSSQL_DATABASE": "YourDatabase",
+        "SEMANTIC_MCP_MSSQL_USER": "sa",
+        "SEMANTIC_MCP_MSSQL_PASSWORD": "YourPassword"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving. The server will appear under MCP integrations.
+
+---
+
 ## Features
 
 - **29 MCP tools** across 9 capability groups (metadata, relationship, semantic, object, query, policy, cache, metrics, workflow)
@@ -60,31 +169,38 @@ SQL Server + SQLite
 
 Requires Python 3.11+.
 
-Quick start:
-
-```bash
-cp .env.example .env
-uv sync --dev
-```
-
-Then edit `.env` and start the server:
-
-```bash
-uv run python -m sqlserver_semantic_mcp.main
-```
-
-Alternative install path:
+**Editable install with pip** (registers the `sqlserver-semantic-mcp` console script on your PATH):
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-This installs:
-- `mcp` (MCP SDK)
-- `pymssql` (SQL Server driver)
-- `pydantic` + `pydantic-settings` (config + model validation)
-- `aiosqlite` (async SQLite cache)
-- `pytest` + `pytest-asyncio` + `pytest-mock` (test deps)
+**Install with uv:**
+
+```bash
+uv sync
+# include dev dependencies:
+uv sync --dev
+```
+
+**Run without installing** (uv project mode):
+
+```bash
+uv run python -m sqlserver_semantic_mcp.main
+```
+
+Installed dependencies:
+
+| Package | Role |
+|---|---|
+| `mcp` | MCP SDK (stdio transport) |
+| `pymssql` | SQL Server wire driver (wraps FreeTDS) |
+| `pydantic` + `pydantic-settings` | Config validation, env var loading |
+| `aiosqlite` | Async SQLite for the two-tier cache |
+
+Dev-only dependencies: `pytest`, `pytest-asyncio`, `pytest-mock`.
+
+> **Linux note:** `pymssql` links against FreeTDS. If `pip install` fails with a compiler error, install system headers first — see [Troubleshooting](#troubleshooting).
 
 ---
 
@@ -130,11 +246,80 @@ All configuration is via environment variables with the `SEMANTIC_MCP_` prefix. 
 
 ---
 
+## Connection Scenarios
+
+Copy the relevant block into your `.env` file (or into the `env` map in your MCP client config).
+
+### SQL Authentication (default)
+
+The most common setup. SQL Server Authentication must be enabled on the instance.
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=localhost
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_USER=sa
+SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword
+```
+
+### Windows Authentication
+
+Omit `MSSQL_USER` and `MSSQL_PASSWORD`; the process must run under a Windows account that has SQL Server access. Use double-backslash for named instances in `.env` files.
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=MY-PC\\SQLEXPRESS
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true
+```
+
+> Windows Authentication is only available on Windows. pymssql does not support it on Linux or macOS — use SQL Authentication on those platforms.
+
+### Azure SQL Database
+
+TLS is automatically enabled when the server name ends in `.database.windows.net`; you do not need to set `MSSQL_ENCRYPT` explicitly.
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=yourserver.database.windows.net
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_USER=youradmin@yourserver
+SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword
+```
+
+### LocalDB (Windows only)
+
+LocalDB communicates over a named pipe — no TCP port is required. Windows Authentication is used by default.
+
+```env
+SEMANTIC_MCP_MSSQL_SERVER=(localdb)\MSSQLLocalDB
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
+SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true
+```
+
+### Custom Policy File
+
+Point `SEMANTIC_MCP_POLICY_FILE` at a JSON policy file you control. Without this setting the server operates in built-in read-only mode.
+
+```env
+SEMANTIC_MCP_POLICY_FILE=./config/policy.example.json
+SEMANTIC_MCP_POLICY_PROFILE=read_write_safe
+```
+
+See [Policy System](#policy-system) for the full policy file format and available profiles.
+
+### Custom Cache Location
+
+Useful when running multiple server instances against different databases, or when the default `./cache/` directory is not writable.
+
+```env
+SEMANTIC_MCP_CACHE_PATH=/var/lib/sqlserver-mcp/mydb.db
+```
+
+---
+
 ## Policy System
 
-If no policy file is provided, a built-in **read-only** profile is used: only `SELECT` is allowed, at most 1000 rows returned, multi-statement queries rejected.
+**Default security posture:** if no policy file is configured, the server operates in built-in **read-only** mode by default — no configuration needed to enforce it. In this mode: only `SELECT` statements are permitted, results are capped at 1000 rows, multi-statement queries are rejected, and every query still passes through the policy enforcer before reaching `cursor.execute()`. No unrestricted SQL execution path exists.
 
-To use a custom policy, create a JSON file (see `config/policy.example.json`) and point `SEMANTIC_MCP_POLICY_FILE` at it:
+To enable writes or change any constraint, create a policy JSON file and point `SEMANTIC_MCP_POLICY_FILE` at it (see `config/policy.example.json`):
 
 ```json
 {
@@ -163,6 +348,14 @@ To use a custom policy, create a JSON file (see `config/policy.example.json`) an
 **Constraints** — `require_where_for_update`, `require_where_for_delete`, `require_top_for_select`, `max_rows_returned`, `max_rows_affected`, `allow_multi_statement`, `query_timeout_seconds`
 
 **Scope** — `allowed_databases`, `allowed_schemas`, `allowed_tables`, `denied_tables`
+
+### Profile quick reference
+
+| Profile | SELECT | INSERT | UPDATE | DELETE | WHERE required | Row cap |
+|---|---|---|---|---|---|---|
+| `readonly` (builtin default) | Yes | No | No | No | N/A | 1000 returned |
+| `read_write_safe` | Yes | Yes | Yes | No | UPDATE requires WHERE | 100 affected |
+| `admin` | Yes | Yes | Yes | Yes | No | 10 000 affected |
 
 > **Safety note:** when `allowed_schemas` is set, queries that reference a table without a schema prefix (e.g. `SELECT * FROM Users` instead of `dbo.Users`) are rejected — you cannot bypass schema-level access control with implicit defaults.
 
@@ -219,6 +412,20 @@ Backward-compatible direct reads are also supported for:
 ---
 
 ## Running the Server
+
+**Via the installed console script** (after `pip install -e .`):
+
+```bash
+sqlserver-semantic-mcp
+```
+
+**Via uv (without installing):**
+
+```bash
+uv run python -m sqlserver_semantic_mcp.main
+```
+
+**Via Python directly** (when the package is already on `sys.path`):
 
 ```bash
 python -m sqlserver_semantic_mcp.main
@@ -279,6 +486,54 @@ sqlserver_semantic_mcp/
 - **Unit tests** use in-memory or tmp-dir SQLite and mock pymssql.
 - **Integration tests** are marked `@pytest.mark.integration` and skip unless `SEMANTIC_MCP_MSSQL_SERVER` is set.
 - Pydantic models are exercised directly; infrastructure layers are tested with mocked connections.
+
+---
+
+## Troubleshooting
+
+### pymssql / FreeTDS installation fails on Linux
+
+`pymssql` links against FreeTDS. On Debian/Ubuntu, install the required system libraries before running `pip install`:
+
+```bash
+sudo apt-get install -y libssl-dev libkrb5-dev freetds-dev
+pip install pymssql
+```
+
+On Alpine / Docker: `apk add freetds-dev openssl-dev krb5-dev`.
+
+### "Cannot open server" or connection refused
+
+- Confirm the server name and port are correct (`SEMANTIC_MCP_MSSQL_SERVER`, `SEMANTIC_MCP_MSSQL_PORT`).
+- Check that TCP/IP is enabled in SQL Server Configuration Manager.
+- If using a named instance (e.g. `MY-PC\SQLEXPRESS`), confirm SQL Server Browser is running so the port can be resolved dynamically.
+- If using a non-default port, set `SEMANTIC_MCP_MSSQL_PORT` explicitly — SQL Server Browser is not needed when the port is fixed.
+- Check firewall rules: port 1433 (or your custom port) must be reachable from the machine running the MCP server.
+
+### "Login failed for user"
+
+- Confirm `SEMANTIC_MCP_MSSQL_USER` and `SEMANTIC_MCP_MSSQL_PASSWORD` are correct.
+- Verify that SQL Server Authentication is enabled on the instance (Server Properties → Security → SQL Server and Windows Authentication mode).
+- For Azure SQL, the user may need to be in the format `user@servername` depending on your driver version.
+
+### Windows Authentication not working on Linux or macOS
+
+pymssql does not support Windows Authentication (Kerberos/NTLM) on non-Windows platforms. Use SQL Authentication (`MSSQL_USER` + `MSSQL_PASSWORD`) instead. `SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true` is only effective on Windows.
+
+### LocalDB not connecting
+
+- LocalDB is Windows-only and communicates over a named pipe, not TCP.
+- Use the exact format `(localdb)\MSSQLLocalDB` (or your instance name) for `SEMANTIC_MCP_MSSQL_SERVER`.
+- Set `SEMANTIC_MCP_MSSQL_WINDOWS_AUTH=true`; SQL auth is not supported by LocalDB by default.
+- Run `sqllocaldb info` in a Windows terminal to list available instances and confirm they are running.
+
+### Policy file not found or ignored
+
+When the policy file cannot be read (missing, unreadable, or invalid JSON), the server falls back to built-in read-only mode and logs a warning. Check the startup logs for lines containing `policy`. If `SEMANTIC_MCP_POLICY_FILE` is set to a relative path, it is resolved from the process working directory — use an absolute path to avoid ambiguity.
+
+### Server starts but tools return empty results
+
+The Structural Cache may not have been populated yet. Check the startup logs for warmup progress. You can force a full refresh with the `refresh_schema_cache` MCP tool. Also verify that the connected database user has `VIEW DEFINITION` permission; without it, object definitions and comments will be absent from the cache.
 
 ---
 
