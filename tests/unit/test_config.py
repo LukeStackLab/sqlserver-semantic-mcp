@@ -13,6 +13,7 @@ def test_config_defaults(monkeypatch):
     assert cfg.mssql_port == 1433
     assert cfg.cache_enabled is True
     assert cfg.cache_path.endswith("semantic_mcp.db")
+    assert cfg.startup_mode == "cache_first"
     assert cfg.max_rows_returned == 1000
 
 

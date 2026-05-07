@@ -8,7 +8,7 @@ from typing import Any, Optional
 import aiosqlite
 
 from ...config import Config
-from ..connection import fetch_all
+from ..connection import open_connection
 from ..queries.metadata_queries import (
     GET_TABLES, GET_COLUMNS, GET_PRIMARY_KEYS,
     GET_FOREIGN_KEYS, GET_INDEXES, GET_OBJECTS,
@@ -162,14 +162,33 @@ async def write_structural_snapshot(
 
 
 def fetch_snapshot_from_server(cfg: Config) -> StructuralSnapshot:
+    queries = (
+        GET_TABLES,
+        GET_COLUMNS,
+        GET_PRIMARY_KEYS,
+        GET_FOREIGN_KEYS,
+        GET_INDEXES,
+        GET_OBJECTS,
+        GET_COMMENTS,
+    )
+    results: list[list[tuple]] = []
+    with open_connection(cfg) as conn:
+        cursor = conn.cursor()
+        try:
+            for sql in queries:
+                cursor.execute(sql)
+                results.append(list(cursor.fetchall()))
+        finally:
+            cursor.close()
+
     return StructuralSnapshot(
-        tables=fetch_all(cfg, GET_TABLES),
-        columns=fetch_all(cfg, GET_COLUMNS),
-        primary_keys=fetch_all(cfg, GET_PRIMARY_KEYS),
-        foreign_keys=fetch_all(cfg, GET_FOREIGN_KEYS),
-        indexes=fetch_all(cfg, GET_INDEXES),
-        objects=fetch_all(cfg, GET_OBJECTS),
-        comments=fetch_all(cfg, GET_COMMENTS),
+        tables=results[0],
+        columns=results[1],
+        primary_keys=results[2],
+        foreign_keys=results[3],
+        indexes=results[4],
+        objects=results[5],
+        comments=results[6],
     )
 
 

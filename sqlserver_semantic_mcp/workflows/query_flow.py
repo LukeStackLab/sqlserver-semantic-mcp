@@ -17,7 +17,7 @@ def plan_or_execute_query(
     query_service: QueryService,
     mode: str = "auto",
     max_rows: Optional[int] = None,
-    return_mode: str = "rows",
+    return_mode: Optional[str] = None,
     detail: str = "brief",
     token_budget_hint: Optional[str] = None,
     affected_rows_policy: Optional[str] = None,

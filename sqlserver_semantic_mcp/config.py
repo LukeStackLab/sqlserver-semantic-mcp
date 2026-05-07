@@ -7,6 +7,7 @@ DetailTier = Literal["brief", "standard", "full"]
 ResponseMode = Literal["summary", "rows", "sample", "count_only"]
 TokenBudgetHint = Literal["tiny", "low", "medium", "high"]
 AffectedRowsPolicy = Literal["strict", "report"]
+StartupMode = Literal["full", "cache_first"]
 
 
 class Config(BaseSettings):
@@ -29,6 +30,7 @@ class Config(BaseSettings):
     # ---- Cache ----
     cache_path: str = "./cache/semantic_mcp.db"
     cache_enabled: bool = True
+    startup_mode: StartupMode = "cache_first"
     background_batch_size: int = Field(default=5, ge=1)
     background_interval_ms: int = Field(default=500, ge=0)
 

@@ -34,16 +34,31 @@ async def _startup() -> asyncio.Task | None:
     bg_task: asyncio.Task | None = None
     if cfg.cache_enabled:
         existing = await read_schema_version(cfg.cache_path, cfg.mssql_database)
-        if existing is None:
-            logger.info("No cache found; running structural warmup")
+        should_warmup = (
+            cfg.startup_mode == "full"
+            or existing is None
+        )
+        if should_warmup:
+            if existing is None:
+                logger.info("No cache found; running structural warmup")
+            else:
+                logger.info(
+                    "Startup mode '%s' requires a fresh structural warmup "
+                    "(cached_at=%s)",
+                    cfg.startup_mode,
+                    existing["captured_at"],
+                )
+            result = await warmup_structural_cache(cfg)
+            structural_hash = result["structural_hash"]
         else:
             logger.info(
-                "Cache present (captured_at=%s); verifying via fresh warmup",
+                "Startup mode '%s' reuses existing cache (captured_at=%s)",
+                cfg.startup_mode,
                 existing["captured_at"],
             )
-        result = await warmup_structural_cache(cfg)
+            structural_hash = existing["structural_hash"]
         await enqueue_all_tables(
-            cfg.cache_path, cfg.mssql_database, result["structural_hash"],
+            cfg.cache_path, cfg.mssql_database, structural_hash,
         )
         bg_task = asyncio.create_task(background_fill_loop(cfg))
 

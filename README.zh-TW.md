@@ -11,19 +11,22 @@
 
 AI Agent 不需要赤裸的 `execute_sql`。它們需要理解 schema 結構、關聯、物件相依性,最重要的是,能在操作者定義的安全邊界內運作。
 
-`sqlserver-semantic-mcp` 透過 18 個 MCP 工具與 6 個 MCP 資源提供以上能力,底層以雙層 SQLite 快取加速,並以 JSON 格式的 policy 系統保障安全。
+`sqlserver-semantic-mcp` 透過 29 個 MCP 工具、1 個 concrete MCP 資源與 5 個 MCP resource templates 提供以上能力,底層以雙層 SQLite 快取加速,並以 JSON 格式的 policy 系統保障安全。
 
 ---
 
 ## 功能特色
 
-- **18 個 MCP 工具**,分佈於 6 個能力群組(metadata、relationship、semantic、object、query、policy)
+- **29 個 MCP 工具**,分佈於 9 個能力群組(metadata、relationship、semantic、object、query、policy、cache、metrics、workflow)
 - **雙層 SQLite 快取** — Structural Cache(啟動時預熱)+ Semantic Cache(延遲載入 + 背景填入)
+- **Cache-first 啟動** — 預設重用既有 structural cache,避免每次程序重啟都強制全量預熱
 - **三重 hash schema 版本控制** — 偵測結構 / 物件 / 註解變更何時讓快取分析失效
 - **Policy 閘門執行** — SELECT/INSERT/UPDATE/DELETE/… 權限、WHERE 子句要求、資料列上限、schema/table 白名單
 - **語意分類** — 自動識別 fact / dimension / lookup / bridge / audit 表
 - **Join 路徑探索** — 在 FK 圖上以 BFS 找出兩張表之間的關聯路徑
-- **物件檢視** — view / procedure / function 定義與相依追蹤
+- **物件檢視** — view / procedure / function 定義與相依追蹤,並拆分 reads / writes
+- **Workflow 快捷工具** — discovery、risk estimation、context bundling、direct execution fast path
+- **Payload metrics** — 內建每個工具回應大小量測
 - **優雅降級** — policy 檔遺失或損壞時回退為唯讀;資料庫不可達時亦不會破壞快取
 
 ---
@@ -57,6 +60,21 @@ SQL Server + SQLite
 
 需要 Python 3.11+。
 
+快速開始:
+
+```bash
+cp .env.example .env
+uv sync --dev
+```
+
+接著編輯 `.env`,然後啟動 server:
+
+```bash
+uv run python -m sqlserver_semantic_mcp.main
+```
+
+如果你偏好 `pip`:
+
 ```bash
 pip install -e ".[dev]"
 ```
@@ -72,7 +90,7 @@ pip install -e ".[dev]"
 
 ## 設定
 
-所有設定透過 `SEMANTIC_MCP_` 前綴的環境變數進行。工作目錄下的 `.env` 檔也會自動載入。
+所有設定透過 `SEMANTIC_MCP_` 前綴的環境變數進行。工作目錄下的 `.env` 檔也會自動載入。建議直接從 `.env.example` 開始。
 
 ### 必要項目
 
@@ -92,6 +110,7 @@ pip install -e ".[dev]"
 | `SEMANTIC_MCP_MSSQL_ENCRYPT` | `false` | 強制 TLS(Azure SQL 自動啟用) |
 | `SEMANTIC_MCP_CACHE_PATH` | `./cache/semantic_mcp.db` | SQLite 快取檔位置 |
 | `SEMANTIC_MCP_CACHE_ENABLED` | `true` | 關閉可略過啟動預熱 |
+| `SEMANTIC_MCP_STARTUP_MODE` | `cache_first` | `cache_first` 會在重啟時優先重用既有 cache;`full` 則每次都先向 SQL Server 重新抓結構 |
 | `SEMANTIC_MCP_BACKGROUND_BATCH_SIZE` | `5` | 每次背景批次處理的表數 |
 | `SEMANTIC_MCP_BACKGROUND_INTERVAL_MS` | `500` | 批次之間的延遲 |
 | `SEMANTIC_MCP_POLICY_FILE` | *(內建唯讀)* | Policy JSON 檔路徑 |
@@ -99,6 +118,15 @@ pip install -e ".[dev]"
 | `SEMANTIC_MCP_MAX_ROWS_RETURNED` | `1000` | 覆寫 SELECT 回傳列數上限 |
 | `SEMANTIC_MCP_MAX_ROWS_AFFECTED` | `100` | 覆寫 DML 受影響列數上限 |
 | `SEMANTIC_MCP_QUERY_TIMEOUT` | `30` | 查詢逾時(秒) |
+| `SEMANTIC_MCP_TOOL_PROFILE` | `all` | 以逗號分隔的工具群組: metadata、relationship、semantic、object、query、policy、cache、metrics、workflow |
+| `SEMANTIC_MCP_WORKFLOW_TOOLS_ENABLED` | `true` | 關閉 workflow shortcut 工具 |
+| `SEMANTIC_MCP_METRICS_ENABLED` | `true` | 啟用每個工具回應大小量測 |
+| `SEMANTIC_MCP_DEFAULT_DETAIL` | `brief` | Agent-facing 工具的預設 detail tier |
+| `SEMANTIC_MCP_DEFAULT_RESPONSE_MODE` | `summary` | 查詢執行的預設回應 shape |
+| `SEMANTIC_MCP_DEFAULT_TOKEN_BUDGET_HINT` | `low` | 查詢取樣與 payload 的預設 budget |
+| `SEMANTIC_MCP_DIRECT_EXECUTE_ENABLED` | `true` | 當 policy 允許時啟用 workflow fast path 直接執行 |
+| `SEMANTIC_MCP_STRICT_ROWS_AFFECTED_CAP` | `true` | 預設在超出 rows-affected cap 時回滾 |
+| `SEMANTIC_MCP_INTENT_ANALYZER` | `regex` | SQL 意圖分析器後端(`regex` 或 `ast`) |
 
 ---
 
@@ -153,72 +181,40 @@ pip install -e ".[dev]"
 
 ## MCP 工具
 
-### Metadata(3)
+目前的工具群組:
 
-| 工具 | 用途 |
-|---|---|
-| `get_tables` | 列出所有表(schema + 名稱) |
-| `describe_table` | 欄位、PK、FK、索引、表描述 |
-| `get_columns` | 欄位清單含型別與描述 |
+- `metadata`(3): `get_tables`、`describe_table`、`get_columns`
+- `relationship`(3): `get_table_relationships`、`find_join_path`、`get_dependency_chain`
+- `semantic`(3): `classify_table`、`analyze_columns`、`detect_lookup_tables`
+- `object`(3): `describe_view`、`describe_procedure`、`trace_object_dependencies`
+- `query`(5): `validate_query`、`run_safe_query`、`plan_or_execute_query`、`preview_safe_query`、`estimate_execution_risk`
+- `policy`(3): `get_execution_policy`、`validate_sql_against_policy`、`refresh_policy`
+- `cache`(1): `refresh_schema_cache`
+- `metrics`(2): `get_tool_metrics`、`reset_tool_metrics`
+- `workflow`(6): `discover_relevant_tables`、`suggest_next_tool`、`bundle_context_for_next_step`、`score_join_candidate`、`summarize_table_for_joining`、`summarize_object_for_impact`
 
-### Relationship(3)
-
-| 工具 | 用途 |
-|---|---|
-| `get_table_relationships` | 某張表的 FK 入邊與出邊 |
-| `find_join_path` | 兩張表之間以 FK 為基礎的最短 join 路徑(BFS、雙向) |
-| `get_dependency_chain` | 從指定表出發、透過 FK 可達的所有表 |
-
-### Semantic(3)
-
-| 工具 | 用途 |
-|---|---|
-| `classify_table` | 回傳表類型:fact / dimension / lookup / bridge / audit |
-| `analyze_columns` | 每個欄位的語意標籤(audit_timestamp、audit_user、status、type…) |
-| `detect_lookup_tables` | 掃描資料庫並回傳可能的 lookup 表(優先使用快取) |
-
-### Object(3)
-
-| 工具 | 用途 |
-|---|---|
-| `describe_view` | View 定義與相依 |
-| `describe_procedure` | Stored procedure 定義與相依 |
-| `trace_object_dependencies` | view/proc/function 相依的所有物件/表之平坦清單 |
-
-### Query(2)
-
-| 工具 | 用途 |
-|---|---|
-| `validate_query` | 分析 SQL 意圖並回報 policy 是否允許(不執行) |
-| `run_safe_query` | 經 policy 驗證後執行 SQL;結果會被截斷至 `max_rows_returned` |
-
-### Policy(3)
-
-| 工具 | 用途 |
-|---|---|
-| `get_execution_policy` | 回傳啟用中的 policy profile |
-| `validate_sql_against_policy` | 與 `validate_query` 相同,但以 policy 為焦點 |
-| `refresh_policy` | 熱重載 policy 檔 |
-
-### Cache(1)
-
-| 工具 | 用途 |
-|---|---|
-| `refresh_schema_cache` | 重新取得結構 metadata;hash 有變動的 semantic 列會被標記為 dirty |
+若要降低 prompt 成本,優先使用 workflow tools,再搭配 `detail=\"brief\"` 與帶 filter 的 metadata calls。
 
 ---
 
 ## MCP 資源
 
-```
-semantic://schema/tables                          — 所有表(JSON)
-semantic://schema/tables/{schema}.{table}         — 單張表 metadata
-semantic://summary/database                       — 計數與 hash
-semantic://analysis/classification/{schema}.{table}
-semantic://analysis/dependencies/{type}/{schema}.{name}   — type ∈ VIEW/PROCEDURE/FUNCTION
-```
+自動列出的 concrete resources:
 
-`list_resources` 呼叫時會自動依表列出資源;個別讀取則以上述 URI 為目標。
+- `semantic://summary/database`
+
+自動列出的 resource templates:
+
+- `semantic://schema/tables/{qualified}`
+- `semantic://analysis/classification/{qualified}`
+- `semantic://summary/table/{qualified}`
+- `semantic://summary/object/{type}/{qualified}`
+- `semantic://bundle/joining/{qualified}`
+
+另外也保留相容性的 direct reads:
+
+- `semantic://schema/tables`
+- `semantic://analysis/dependencies/{type}/{schema}.{name}`
 
 ---
 
@@ -231,7 +227,7 @@ python -m sqlserver_semantic_mcp.main
 伺服器透過 stdio 以 MCP 通訊。啟動時會:
 
 1. 開啟(或建立)SQLite 快取
-2. 從 SQL Server 抓取新的 Structural 快照並寫入
+2. 當 `SEMANTIC_MCP_STARTUP_MODE=cache_first` 時優先重用既有 Structural cache,否則再從 SQL Server 抓取新的快照
 3. 將所有表加入 Semantic 分析佇列
 4. 啟動背景填入任務
 5. 接受 MCP 工具/資源呼叫
@@ -245,8 +241,8 @@ python -m sqlserver_semantic_mcp.main
 ### 執行測試
 
 ```bash
-pytest tests/unit                      # 82 個單元測試,不需資料庫
-pytest tests/integration -m integration # 需要實際的 SQL Server
+uv run --extra dev pytest tests/unit
+uv run --extra dev pytest tests/integration -m integration
 ```
 
 ### 專案結構

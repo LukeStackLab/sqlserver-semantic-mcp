@@ -142,7 +142,7 @@ async def _plan_or_execute(args: dict) -> dict:
         args["query"],
         mode=args.get("mode", "auto"),
         max_rows=args.get("max_rows"),
-        return_mode=args.get("return_mode", "rows"),
+        return_mode=args.get("return_mode"),
         detail=args.get("detail", "brief"),
         token_budget_hint=args.get("token_budget_hint"),
         affected_rows_policy=args.get("affected_rows_policy"),

@@ -64,6 +64,8 @@ async def test_list_columns(tmp_path):
     cols = await list_columns(db_path, "testdb", "dbo", "Users")
     assert len(cols) == 2
     assert cols[0]["column_name"] == "Id"
+    assert "default_value" in cols[0]
+    assert "column_default" not in cols[0]
 
 
 @pytest.mark.asyncio

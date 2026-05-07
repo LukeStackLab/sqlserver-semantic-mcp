@@ -2,6 +2,38 @@ from typing import Optional
 import aiosqlite
 
 
+async def _list_columns_from_db(
+    db: aiosqlite.Connection,
+    database: str,
+    schema: str,
+    table: str,
+) -> list[dict]:
+    cur = await db.execute(
+        "SELECT column_name, data_type, max_length, is_nullable, "
+        "column_default, ordinal_position "
+        "FROM sc_columns "
+        "WHERE database_name=? AND schema_name=? AND table_name=? "
+        "ORDER BY ordinal_position",
+        (database, schema, table),
+    )
+    cols = [dict(r) for r in await cur.fetchall()]
+
+    cur = await db.execute(
+        "SELECT column_name, description FROM sc_comments "
+        "WHERE database_name=? AND schema_name=? AND object_name=? "
+        "AND column_name<>''",
+        (database, schema, table),
+    )
+    comments = {r["column_name"]: r["description"]
+                for r in await cur.fetchall()}
+
+    for c in cols:
+        c["is_nullable"] = bool(c["is_nullable"])
+        c["default_value"] = c.pop("column_default", None)
+        c["description"] = comments.get(c["column_name"])
+    return cols
+
+
 async def list_tables(
     db_path: str, database: str, *,
     schemas: Optional[list[str]] = None,
@@ -35,29 +67,7 @@ async def list_columns(
 ) -> list[dict]:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        cur = await db.execute(
-            "SELECT column_name, data_type, max_length, is_nullable, "
-            "column_default, ordinal_position "
-            "FROM sc_columns "
-            "WHERE database_name=? AND schema_name=? AND table_name=? "
-            "ORDER BY ordinal_position",
-            (database, schema, table),
-        )
-        cols = [dict(r) for r in await cur.fetchall()]
-
-        cur = await db.execute(
-            "SELECT column_name, description FROM sc_comments "
-            "WHERE database_name=? AND schema_name=? AND object_name=? "
-            "AND column_name<>''",
-            (database, schema, table),
-        )
-        comments = {r["column_name"]: r["description"]
-                    for r in await cur.fetchall()}
-
-    for c in cols:
-        c["is_nullable"] = bool(c["is_nullable"])
-        c["description"] = comments.get(c["column_name"])
-    return cols
+        return await _list_columns_from_db(db, database, schema, table)
 
 
 async def describe_table(
@@ -73,7 +83,7 @@ async def describe_table(
         if not await cur.fetchone():
             return None
 
-        columns = await list_columns(db_path, database, schema, table)
+        columns = await _list_columns_from_db(db, database, schema, table)
 
         cur = await db.execute(
             "SELECT column_name FROM sc_primary_keys "

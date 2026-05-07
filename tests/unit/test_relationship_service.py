@@ -79,3 +79,40 @@ async def test_dependency_chain(tmp_path):
     reached = {(c["schema_name"], c["table_name"]) for c in chain}
     assert ("dbo", "Orders") in reached
     assert ("dbo", "OrderItems") in reached
+
+
+@pytest.mark.asyncio
+async def test_fk_graph_cache_refreshes_after_schema_change(tmp_path):
+    db_path = await _setup(tmp_path)
+    path = await find_join_path(
+        db_path, "testdb", "dbo", "OrderItems", "dbo", "Isolated",
+    )
+    assert path is None
+
+    snap = StructuralSnapshot(
+        tables=[("dbo", "Users"), ("dbo", "Orders"),
+                ("dbo", "OrderItems"), ("dbo", "Products"),
+                ("dbo", "Isolated")],
+        columns=[],
+        primary_keys=[
+            ("dbo", "Users", "Id"), ("dbo", "Orders", "Id"),
+            ("dbo", "OrderItems", "Id"), ("dbo", "Products", "Id"),
+            ("dbo", "Isolated", "Id"),
+        ],
+        foreign_keys=[
+            ("dbo", "Orders", "UserId", "dbo", "Users", "Id"),
+            ("dbo", "OrderItems", "OrderId", "dbo", "Orders", "Id"),
+            ("dbo", "OrderItems", "ProductId", "dbo", "Products", "Id"),
+            ("dbo", "Users", "IsolatedId", "dbo", "Isolated", "Id"),
+        ],
+        indexes=[],
+        objects=[],
+        comments=[],
+    )
+    await write_structural_snapshot(db_path, "testdb", snap)
+
+    refreshed = await find_join_path(
+        db_path, "testdb", "dbo", "OrderItems", "dbo", "Isolated",
+    )
+    assert refreshed is not None
+    assert [edge["to_table"] for edge in refreshed] == ["Orders", "Users", "Isolated"]

@@ -49,24 +49,6 @@ def register() -> None:
     )
     register_tool(
         Tool(
-            name="summarize_table_for_joining",
-            description=(
-                "Return reasoning-ready shape for joining against this table: "
-                "{table, pk, classification, join_candidates, common_filter_columns}."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schema": {"type": "string"},
-                    "table":  {"type": "string"},
-                },
-                "required": ["schema", "table"],
-            },
-        ),
-        _summarize_joining,
-    )
-    register_tool(
-        Tool(
             name="detect_lookup_tables",
             description=(
                 "Scan DB and return likely lookup tables. Supports schema / "
@@ -109,14 +91,6 @@ async def _classify(args: dict) -> dict:
         force=args.get("force", False),
     )
     return project_classify(classification, detail)
-
-
-async def _summarize_joining(args: dict) -> dict:
-    ctx = get_context()
-    return await semantic_service.summarize_for_joining(
-        ctx.cfg.cache_path, ctx.cfg.mssql_database,
-        args["schema"], args["table"],
-    )
 
 
 async def _columns(args: dict) -> list[dict]:

@@ -59,6 +59,8 @@ _TOOL_REGISTRY: dict[str, tuple[Tool, ToolHandler]] = {}
 
 
 def register_tool(tool: Tool, handler: ToolHandler) -> None:
+    if tool.name in _TOOL_REGISTRY:
+        raise ValueError(f"Duplicate tool registration: {tool.name}")
     _TOOL_REGISTRY[tool.name] = (tool, handler)
 
 

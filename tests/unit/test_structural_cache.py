@@ -1,5 +1,6 @@
 import pytest
 import aiosqlite
+from unittest.mock import MagicMock, patch
 
 from sqlserver_semantic_mcp.infrastructure.cache.store import init_store
 from sqlserver_semantic_mcp.infrastructure.cache.structural import (
@@ -9,6 +10,7 @@ from sqlserver_semantic_mcp.infrastructure.cache.structural import (
     write_structural_snapshot,
     read_schema_version,
     StructuralSnapshot,
+    fetch_snapshot_from_server,
 )
 
 
@@ -73,3 +75,30 @@ async def test_write_and_read_snapshot(tmp_path):
         assert (await cur.fetchone())[0] == 1
         cur = await db.execute("SELECT COUNT(*) FROM sc_comments")
         assert (await cur.fetchone())[0] == 1
+
+
+def test_fetch_snapshot_from_server_uses_single_connection():
+    cfg = MagicMock()
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value = cursor
+    cursor.fetchall.side_effect = [
+        [("dbo", "Users")],
+        [("dbo", "Users", "Id", "int", None, 0, None, 1)],
+        [("dbo", "Users", "Id")],
+        [],
+        [],
+        [],
+        [],
+    ]
+
+    with patch(
+        "sqlserver_semantic_mcp.infrastructure.cache.structural.open_connection",
+    ) as mock_open:
+        mock_open.return_value.__enter__.return_value = conn
+        snap = fetch_snapshot_from_server(cfg)
+
+    assert snap.tables == [("dbo", "Users")]
+    assert snap.columns[0][2] == "Id"
+    assert cursor.execute.call_count == 7
+    conn.cursor.assert_called_once()

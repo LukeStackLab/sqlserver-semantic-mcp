@@ -93,7 +93,9 @@ def test_direct_execute_happy_path(mock_open, ctx):
     assert env["data"]["path"] == "direct_execute"
     assert env["data"]["executed"] is True
     assert env["data"]["columns"] == ["id", "name"]
-    assert env["next_action"] == "done"
+    assert env["data"]["row_count"] == 2
+    assert "rows" not in env["data"]
+    assert env["next_action"] == "refine_or_done"
 
 
 @patch("sqlserver_semantic_mcp.services.query_service.open_connection")

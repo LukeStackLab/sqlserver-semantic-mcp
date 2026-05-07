@@ -2,6 +2,11 @@ from typing import Optional
 from collections import deque
 import aiosqlite
 
+from ..infrastructure.cache.structural import read_schema_version
+
+
+_GRAPH_CACHE: dict[tuple[str, str, str], dict[tuple[str, str], list[dict]]] = {}
+
 
 async def get_table_relationships(
     db_path: str, database: str, schema: str, table: str,
@@ -51,6 +56,13 @@ async def get_table_relationships(
 async def _load_fk_graph(
     db_path: str, database: str,
 ) -> dict[tuple[str, str], list[dict]]:
+    ver = await read_schema_version(db_path, database)
+    structural_hash = ver["structural_hash"] if ver else ""
+    cache_key = (db_path, database, structural_hash)
+    cached = _GRAPH_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     graph: dict[tuple[str, str], list[dict]] = {}
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -77,6 +89,13 @@ async def _load_fk_graph(
                 "to_column": r["column_name"],
                 "direction": "inbound",
             })
+    stale_keys = [
+        key for key in _GRAPH_CACHE
+        if key[:2] == (db_path, database) and key != cache_key
+    ]
+    for key in stale_keys:
+        _GRAPH_CACHE.pop(key, None)
+    _GRAPH_CACHE[cache_key] = graph
     return graph
 
 

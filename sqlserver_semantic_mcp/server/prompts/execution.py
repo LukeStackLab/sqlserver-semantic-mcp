@@ -22,7 +22,7 @@ _PROMPT = Prompt(
         ),
         PromptArgument(
             name="return_mode",
-            description="summary | rows | sample | count_only (default: rows).",
+            description="summary | rows | sample | count_only (default: summary).",
             required=False,
         ),
     ],
@@ -47,7 +47,7 @@ Query:
 
 async def _handler(arguments: dict) -> GetPromptResult:
     query = arguments.get("query", "")
-    return_mode = arguments.get("return_mode") or "rows"
+    return_mode = arguments.get("return_mode") or "summary"
     text = _BODY.format(query=query, return_mode=return_mode)
     return GetPromptResult(
         description="Shortest safe path for SQL-ready agents.",

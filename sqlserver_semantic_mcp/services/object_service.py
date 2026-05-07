@@ -158,10 +158,17 @@ async def describe_object(
             definition=definition, dependencies=dependencies,
             affected_tables=affected,
         )
-        fresh = await get_object_definition(
-            cfg.cache_path, db, schema, object_name, object_type,
-        )
-        return _augment_read_write(fresh)
+        return _augment_read_write({
+            "database_name": db,
+            "schema": schema,
+            "object_name": object_name,
+            "object_type": object_type,
+            "object_hash": object_hash,
+            "status": "ready",
+            "definition": definition,
+            "dependencies": dependencies,
+            "affected_tables": affected,
+        })
     except Exception as e:
         logger.exception("describe_object failed")
         await upsert_object_definition(

@@ -119,27 +119,14 @@ async def list_pending_table_analyses(
 
 async def enqueue_all_tables(db_path: str, database: str, structural_hash: str) -> int:
     async with aiosqlite.connect(db_path) as db:
-        cur = await db.execute(
-            "SELECT schema_name, table_name FROM sc_tables "
-            "WHERE database_name=?",
-            (database,),
+        await db.execute(
+            "INSERT OR IGNORE INTO sem_table_analysis "
+            "(database_name, schema_name, table_name, structural_hash, status) "
+            "SELECT ?, schema_name, table_name, ?, 'pending' "
+            "FROM sc_tables WHERE database_name=?",
+            (database, structural_hash, database),
         )
-        tables = await cur.fetchall()
-        inserted = 0
-        for (s, t) in tables:
-            cur = await db.execute(
-                "SELECT 1 FROM sem_table_analysis "
-                "WHERE database_name=? AND schema_name=? AND table_name=?",
-                (database, s, t),
-            )
-            if await cur.fetchone():
-                continue
-            await db.execute(
-                "INSERT INTO sem_table_analysis "
-                "(database_name, schema_name, table_name, structural_hash, status) "
-                "VALUES (?,?,?,?,'pending')",
-                (database, s, t, structural_hash),
-            )
-            inserted += 1
         await db.commit()
-        return inserted
+        cur = await db.execute("SELECT changes()")
+        row = await cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
