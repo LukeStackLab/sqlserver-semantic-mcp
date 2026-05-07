@@ -17,75 +17,71 @@ AI agents don't need raw `execute_sql`. They need to understand schema structure
 
 ## Quick Start
 
-> **30 seconds to a running server.** Fill in your credentials, start the server, point Claude Desktop at it.
+Pick the path that matches your client. All paths use [`uvx`](https://docs.astral.sh/uv/) — no `git clone`, no virtualenv, no manual install. `uvx` downloads and runs the package on demand and caches it for next time.
 
-### Step 1 — Install
+> **Prerequisite:** Install [uv](https://docs.astral.sh/uv/getting-started/installation/) once (`curl -LsSf https://astral.sh/uv/install.sh | sh`). Python 3.11+ is fetched automatically by `uv` if needed.
 
-**Option A — pip editable install (recommended for local dev):**
+> **Replace** `localhost` / `YourDatabase` / `sa` / `YourPassword` in every example with your real SQL Server credentials.
 
-```bash
-git clone https://github.com/lukedev999-boom/sqlserver-semantic-mcp.git
-cd sqlserver-semantic-mcp
-pip install -e ".[dev]"
-```
+### 🤖 Claude Code CLI
 
-**Option B — uv:**
+One command registers the server. `uvx` resolves and caches `sqlserver-semantic-mcp` on first use:
 
 ```bash
-git clone https://github.com/lukedev999-boom/sqlserver-semantic-mcp.git
-cd sqlserver-semantic-mcp
-uv sync
+claude mcp add sqlserver-semantic -- uvx sqlserver-semantic-mcp \
+  -e SEMANTIC_MCP_MSSQL_SERVER=localhost \
+  -e SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase \
+  -e SEMANTIC_MCP_MSSQL_USER=sa \
+  -e SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword
 ```
 
-### Step 2 — Configure
+Or commit the config to your repo as `.mcp.json` for the whole team to share:
 
-Copy the example env file and fill in your SQL Server credentials:
-
-```bash
-cp .env.example .env
+```json
+{
+  "mcpServers": {
+    "sqlserver-semantic": {
+      "command": "uvx",
+      "args": ["sqlserver-semantic-mcp"],
+      "env": {
+        "SEMANTIC_MCP_MSSQL_SERVER": "localhost",
+        "SEMANTIC_MCP_MSSQL_DATABASE": "YourDatabase",
+        "SEMANTIC_MCP_MSSQL_USER": "sa",
+        "SEMANTIC_MCP_MSSQL_PASSWORD": "YourPassword"
+      }
+    }
+  }
+}
 ```
 
-Minimum required settings in `.env`:
+Verify with `claude mcp list`. The server speaks MCP over stdio and will be ready as soon as Claude Code launches a session.
 
-```env
-SEMANTIC_MCP_MSSQL_SERVER=localhost
-SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase
-SEMANTIC_MCP_MSSQL_USER=sa
-SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword
+### 🛠 Codex CLI
+
+Add this block to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.sqlserver-semantic]
+command = "uvx"
+args = ["sqlserver-semantic-mcp"]
+env = { SEMANTIC_MCP_MSSQL_SERVER = "localhost", SEMANTIC_MCP_MSSQL_DATABASE = "YourDatabase", SEMANTIC_MCP_MSSQL_USER = "sa", SEMANTIC_MCP_MSSQL_PASSWORD = "YourPassword" }
 ```
 
-All other settings are optional and documented in the [Configuration](#configuration) section.
+Then run `codex` — the server will appear in your MCP tool list.
 
-### Step 3 — Run
+### 🖥 Claude Desktop
 
-If you installed via pip (Option A), the `sqlserver-semantic-mcp` console script is on your PATH:
-
-```bash
-sqlserver-semantic-mcp
-```
-
-If you used uv (Option B):
-
-```bash
-uv run python -m sqlserver_semantic_mcp.main
-```
-
-The server speaks MCP over stdio. You should see startup log lines confirming cache initialisation and tool registration.
-
-### Step 4 — Connect to Claude Desktop
-
-Open your Claude Desktop MCP config file:
+Edit your config file:
 
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-**If you installed via pip (the `sqlserver-semantic-mcp` binary is on your PATH):**
-
 ```json
 {
   "mcpServers": {
-    "sqlserver-semantic-mcp": {
-      "command": "sqlserver-semantic-mcp",
+    "sqlserver-semantic": {
+      "command": "uvx",
+      "args": ["sqlserver-semantic-mcp"],
       "env": {
         "SEMANTIC_MCP_MSSQL_SERVER": "localhost",
         "SEMANTIC_MCP_MSSQL_DATABASE": "YourDatabase",
@@ -97,30 +93,50 @@ Open your Claude Desktop MCP config file:
 }
 ```
 
-**If you are using uv (specify the full project path):**
+Restart Claude Desktop after saving.
 
-```json
-{
-  "mcpServers": {
-    "sqlserver-semantic-mcp": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--project", "/path/to/sqlserver-semantic-mcp",
-        "python", "-m", "sqlserver_semantic_mcp.main"
-      ],
-      "env": {
-        "SEMANTIC_MCP_MSSQL_SERVER": "localhost",
-        "SEMANTIC_MCP_MSSQL_DATABASE": "YourDatabase",
-        "SEMANTIC_MCP_MSSQL_USER": "sa",
-        "SEMANTIC_MCP_MSSQL_PASSWORD": "YourPassword"
-      }
-    }
-  }
-}
+### 🧪 Smoke test (optional, all clients)
+
+Confirm the package can run before wiring it into a host:
+
+```bash
+SEMANTIC_MCP_MSSQL_SERVER=localhost \
+SEMANTIC_MCP_MSSQL_DATABASE=YourDatabase \
+SEMANTIC_MCP_MSSQL_USER=sa \
+SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword \
+  uvx sqlserver-semantic-mcp
 ```
 
-Restart Claude Desktop after saving. The server will appear under MCP integrations.
+You should see startup log lines confirming cache initialisation and tool registration. Press `Ctrl+C` to stop.
+
+### 🧰 Local development (contributors only)
+
+Skip this section if you just want to use the server.
+
+```bash
+git clone https://github.com/lukedev999-boom/sqlserver-semantic-mcp.git
+cd sqlserver-semantic-mcp
+cp .env.example .env             # then fill in MSSQL credentials
+uv sync --dev                    # creates .venv with dev deps
+uv run python -m sqlserver_semantic_mcp.main
+```
+
+For an editable install with pip instead:
+
+```bash
+pip install -e ".[dev]"
+sqlserver-semantic-mcp
+```
+
+When pointing an MCP client at a local checkout, replace `uvx sqlserver-semantic-mcp` with:
+
+```json
+"command": "uv",
+"args": ["run", "--project", "/absolute/path/to/sqlserver-semantic-mcp",
+         "python", "-m", "sqlserver_semantic_mcp.main"]
+```
+
+See the full env-var matrix in [Configuration](#configuration).
 
 ---
 
@@ -167,15 +183,31 @@ SQL Server + SQLite
 
 ## Installation
 
+> Most users should follow [Quick Start](#quick-start) instead — it uses `uvx` and needs no install step. This section is for contributors and offline / air-gapped setups.
+
 Requires Python 3.11+.
 
-**Editable install with pip** (registers the `sqlserver-semantic-mcp` console script on your PATH):
+**One-shot run via uvx** (no install, recommended for end users):
+
+```bash
+uvx sqlserver-semantic-mcp
+```
+
+**Install globally as a CLI tool:**
+
+```bash
+uv tool install sqlserver-semantic-mcp
+# or:
+pipx install sqlserver-semantic-mcp
+```
+
+**Editable install from source with pip** (registers the `sqlserver-semantic-mcp` console script on your PATH):
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-**Install with uv:**
+**Install with uv from source:**
 
 ```bash
 uv sync
@@ -451,6 +483,35 @@ Background fill uses exponential backoff (2ⁿ seconds, capped at 60s) on persis
 uv run --extra dev pytest tests/unit
 uv run --extra dev pytest tests/integration -m integration
 ```
+
+### Publishing a release (maintainers)
+
+The package is distributed on PyPI so end users can run `uvx sqlserver-semantic-mcp` without cloning. Release flow:
+
+1. Bump `version` in `pyproject.toml` (semantic versioning).
+2. Update the changelog in `docs/` and the version badge at the top of this README.
+3. Commit and tag:
+   ```bash
+   git commit -am "chore: bump to vX.Y.Z"
+   git tag vX.Y.Z
+   git push origin main --tags
+   ```
+4. Build and verify the artifacts locally:
+   ```bash
+   uv build                       # produces dist/*.whl + dist/*.tar.gz
+   uvx --from twine twine check dist/*
+   ```
+5. (Recommended) Smoke test the wheel against TestPyPI first:
+   ```bash
+   uvx --from twine twine upload --repository testpypi dist/*
+   uvx --index-url https://test.pypi.org/simple/ sqlserver-semantic-mcp
+   ```
+6. Publish to PyPI:
+   ```bash
+   uv publish                     # uses UV_PUBLISH_TOKEN or ~/.pypirc
+   ```
+
+> Configure a PyPI API token once: `export UV_PUBLISH_TOKEN=pypi-…` (or store under `[pypi]` in `~/.pypirc`).
 
 ### Project structure
 

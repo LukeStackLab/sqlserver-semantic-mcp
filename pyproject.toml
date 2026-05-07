@@ -1,8 +1,38 @@
 [project]
 name = "sqlserver-semantic-mcp"
 version = "0.5.0"
-description = "Semantic understanding MCP server for SQL Server"
+description = "Semantic intelligence layer for SQL Server databases, exposed via MCP. A database understanding engine for AI agents (Claude Code CLI, Codex CLI, Claude Desktop, etc.)."
+readme = "README.md"
 requires-python = ">=3.11"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Luke", email = "popo555155@gmail.com"},
+]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "sql-server",
+    "mssql",
+    "claude",
+    "claude-code",
+    "codex",
+    "ai-agent",
+    "semantic",
+    "database",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "mcp>=1.0.0",
     "pymssql>=2.3.0",
@@ -10,6 +40,12 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "aiosqlite>=0.20.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp"
+Repository = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp"
+Issues = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp/issues"
+Documentation = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp#readme"
 
 [project.optional-dependencies]
 dev = [
