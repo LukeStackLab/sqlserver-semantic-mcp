@@ -1,12 +1,9 @@
 """Throttled cache revalidation driven by the L1 schema probe.
 
-Flow per tool call (see server/app.py):
-  - mode 'manual'  -> never probes; refresh only on startup / refresh tool.
-  - mode 'probe'   -> if the throttle window elapsed, revalidate in the
-                      background (stale-while-revalidate): the current call
-                      is served from cache, drift is folded in for the next.
-  - mode 'strict'  -> same throttle, but the call awaits the revalidation
-                      so it always sees a validated schema.
+Stale-while-revalidate, per tool call (see server/app.py): when the
+throttle window has elapsed, a revalidation runs in the background — the
+current call is served from cache immediately and any drift is folded in
+for subsequent calls.
 
 A probe compares fresh catalog fingerprints against the SQLite baseline.
 On drift it triggers the full structural warmup (which re-baselines the
@@ -123,14 +120,9 @@ async def revalidate_if_stale(cfg: Config, *, force: bool = False) -> Optional[d
 
 
 async def maybe_revalidate(cfg: Config) -> None:
-    """Mode-aware entry point used by the tool dispatcher. Never raises."""
+    """Entry point used by the tool dispatcher. Never raises or blocks."""
     try:
-        if not cfg.cache_enabled or cfg.cache_validation_mode == "manual":
-            return
-        if not is_due(cfg):
-            return
-        if cfg.cache_validation_mode == "strict":
-            await revalidate_if_stale(cfg)
+        if not cfg.cache_enabled or not is_due(cfg):
             return
         task = asyncio.create_task(revalidate_if_stale(cfg))
         _BACKGROUND_TASKS.add(task)
