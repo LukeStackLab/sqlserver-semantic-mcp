@@ -162,8 +162,8 @@ async def test_probe_failure_is_swallowed_and_throttled(cfg):
 
 
 @pytest.mark.asyncio
-async def test_maybe_revalidate_manual_mode_noop(cfg, monkeypatch):
-    monkeypatch.setenv("SEMANTIC_MCP_CACHE_VALIDATION_MODE", "manual")
+async def test_maybe_revalidate_cache_disabled_noop(cfg, monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_CACHE_ENABLED", "false")
     reset_config()
     cfg = get_config()
 
@@ -175,24 +175,9 @@ async def test_maybe_revalidate_manual_mode_noop(cfg, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_maybe_revalidate_strict_blocks(cfg, monkeypatch):
-    monkeypatch.setenv("SEMANTIC_MCP_CACHE_VALIDATION_MODE", "strict")
-    reset_config()
-    cfg = get_config()
+async def test_maybe_revalidate_runs_in_background(cfg):
     fps = _fps(tables={("dbo", "Users"): "fp"})
     await _seed_baseline(cfg, fps)
-
-    with patch(f"{MOD}.fetch_fingerprints", return_value=fps) as fetch:
-        await revalidation.maybe_revalidate(cfg)
-
-    fetch.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_maybe_revalidate_probe_runs_in_background(cfg):
-    fps = _fps(tables={("dbo", "Users"): "fp"})
-    await _seed_baseline(cfg, fps)
-    assert cfg.cache_validation_mode == "probe"
 
     with patch(f"{MOD}.fetch_fingerprints", return_value=fps) as fetch:
         await revalidation.maybe_revalidate(cfg)

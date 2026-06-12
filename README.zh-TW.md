@@ -182,13 +182,7 @@ SQL Server + SQLite
 2. **比對** — 指紋與 SQLite 中的基準逐筆 diff。沒有漂移 → 結束(回應永遠來自快取)。
 3. **漂移才刷新** — 重抓完整結構快照,只把*變動的*表的語意列標記為 `dirty`、清除已刪除的表/物件,並把依賴變動表的模組(SQL Server 在底層表變更時不會更新它們)透過相依圖連鎖標記為 `dirty`。背景填入迴圈隨後重新計算 dirty 列。
 
-驗證行為由 `SEMANTIC_MCP_CACHE_VALIDATION_MODE` 控制:
-
-| 模式 | 行為 | 適用情境 |
-|---|---|---|
-| `probe`(預設) | Stale-while-revalidate:工具呼叫立即從快取回應;探針與刷新在背景執行 | 一般情境的最佳平衡 |
-| `strict` | 工具呼叫等待探針(若有漂移則含刷新)完成後才回應 | schema 頻繁變動且回應絕不能過期 |
-| `manual` | 不探測;只在啟動或呼叫 `refresh_schema_cache` 時刷新 | schema 幾乎凍結;DB 流量需求降到最低 |
+重新驗證採 stale-while-revalidate:工具呼叫永遠立即從快取回應,探針(若偵測到漂移則含刷新)在背景執行。`refresh_schema_cache` 仍可用於立即強制刷新;停用快取(`SEMANTIC_MCP_CACHE_ENABLED=false`)時探針亦一併停用。
 
 ---
 
@@ -268,7 +262,6 @@ uv run python -m sqlserver_semantic_mcp.main
 | `SEMANTIC_MCP_CACHE_PATH` | `./cache/semantic_mcp.db` | SQLite 快取檔位置 |
 | `SEMANTIC_MCP_CACHE_ENABLED` | `true` | 關閉可略過啟動預熱 |
 | `SEMANTIC_MCP_STARTUP_MODE` | `cache_first` | `cache_first` 會在重啟時優先重用既有 cache;`full` 則每次都先向 SQL Server 重新抓結構 |
-| `SEMANTIC_MCP_CACHE_VALIDATION_MODE` | `probe` | `probe` 在背景偵測漂移並刷新;`strict` 等待驗證完成才回應;`manual` 不探測 |
 | `SEMANTIC_MCP_PROBE_INTERVAL_S` | `60` | 兩次 schema 探針之間的最小間隔秒數(節流窗口) |
 | `SEMANTIC_MCP_BACKGROUND_BATCH_SIZE` | `5` | 每次背景批次處理的表數 |
 | `SEMANTIC_MCP_BACKGROUND_INTERVAL_MS` | `500` | 批次之間的延遲 |

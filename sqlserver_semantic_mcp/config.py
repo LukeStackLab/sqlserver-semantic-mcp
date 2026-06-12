@@ -8,7 +8,6 @@ ResponseMode = Literal["summary", "rows", "sample", "count_only"]
 TokenBudgetHint = Literal["tiny", "low", "medium", "high"]
 AffectedRowsPolicy = Literal["strict", "report"]
 StartupMode = Literal["full", "cache_first"]
-CacheValidationMode = Literal["manual", "probe", "strict"]
 
 
 class Config(BaseSettings):
@@ -34,10 +33,7 @@ class Config(BaseSettings):
     startup_mode: StartupMode = "cache_first"
     background_batch_size: int = Field(default=5, ge=1)
     background_interval_ms: int = Field(default=500, ge=0)
-    # manual: refresh only on startup / refresh_schema_cache.
-    # probe:  throttled catalog fingerprint probe; refresh in background on drift.
-    # strict: same probe, but blocks the tool call until the refresh completes.
-    cache_validation_mode: CacheValidationMode = "probe"
+    # Minimum seconds between schema drift probes (throttle window)
     probe_interval_s: float = Field(default=60.0, ge=0.0)
 
     # ---- Policy ----

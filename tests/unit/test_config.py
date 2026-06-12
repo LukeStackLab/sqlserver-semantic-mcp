@@ -14,7 +14,6 @@ def test_config_defaults(monkeypatch):
     assert cfg.cache_enabled is True
     assert cfg.cache_path.endswith("semantic_mcp.db")
     assert cfg.startup_mode == "cache_first"
-    assert cfg.cache_validation_mode == "probe"
     assert cfg.probe_interval_s == 60.0
     assert cfg.max_rows_returned == 1000
 

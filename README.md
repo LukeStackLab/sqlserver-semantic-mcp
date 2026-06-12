@@ -205,13 +205,11 @@ lightweight probe that runs at most once per `SEMANTIC_MCP_PROBE_INTERVAL_S`
    cascaded `dirty` via the dependency graph. The background fill loop then
    recomputes the dirty rows.
 
-Validation behaviour is configurable via `SEMANTIC_MCP_CACHE_VALIDATION_MODE`:
-
-| Mode | Behaviour | Use when |
-|---|---|---|
-| `probe` *(default)* | Stale-while-revalidate: tool calls are served from cache immediately; the probe + refresh run in the background | Best balance for typical use |
-| `strict` | The tool call waits for the probe (and refresh, if drift) to finish before answering | Schema changes frequently and answers must never be stale |
-| `manual` | No probing; refresh only on startup or via `refresh_schema_cache` | Schema is effectively frozen; absolute minimum DB traffic |
+Revalidation is stale-while-revalidate: tool calls are always served from
+cache immediately while the probe (and refresh, if drift was found) runs in
+the background. `refresh_schema_cache` remains available for an immediate
+forced refresh, and disabling the cache (`SEMANTIC_MCP_CACHE_ENABLED=false`)
+disables probing too.
 
 ---
 
@@ -293,8 +291,7 @@ All configuration is via environment variables with the `SEMANTIC_MCP_` prefix. 
 | `SEMANTIC_MCP_CACHE_PATH` | `./cache/semantic_mcp.db` | SQLite cache file location |
 | `SEMANTIC_MCP_CACHE_ENABLED` | `true` | Disable to skip startup warmup |
 | `SEMANTIC_MCP_STARTUP_MODE` | `cache_first` | `cache_first` reuses existing cache on restart; `full` always refreshes from SQL Server before serving |
-| `SEMANTIC_MCP_CACHE_VALIDATION_MODE` | `probe` | `probe` revalidates in the background on drift; `strict` blocks the call until validated; `manual` never probes |
-| `SEMANTIC_MCP_PROBE_INTERVAL_S` | `60` | Minimum seconds between schema probes (throttle window) |
+| `SEMANTIC_MCP_PROBE_INTERVAL_S` | `60` | Minimum seconds between schema drift probes (throttle window) |
 | `SEMANTIC_MCP_BACKGROUND_BATCH_SIZE` | `5` | Tables processed per background batch |
 | `SEMANTIC_MCP_BACKGROUND_INTERVAL_MS` | `500` | Delay between batches |
 | `SEMANTIC_MCP_POLICY_FILE` | *(builtin readonly)* | Path to policy JSON |
