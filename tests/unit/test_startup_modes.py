@@ -49,9 +49,7 @@ async def test_startup_cache_first_reuses_existing_cache(env, monkeypatch):
         task = await mod._startup()
 
     warmup.assert_not_awaited()
-    enqueue.assert_awaited_once_with(
-        cfg.cache_path, cfg.mssql_database, "cached-hash",
-    )
+    enqueue.assert_awaited_once_with(cfg.cache_path, cfg.mssql_database)
     create_task.assert_called_once()
     bg_loop.assert_called_once_with(cfg)
     assert task is fake_task
@@ -93,9 +91,7 @@ async def test_startup_full_mode_forces_warmup(env, monkeypatch):
         task = await mod._startup()
 
     warmup.assert_awaited_once_with(cfg)
-    enqueue.assert_awaited_once_with(
-        cfg.cache_path, cfg.mssql_database, "fresh-hash",
-    )
+    enqueue.assert_awaited_once_with(cfg.cache_path, cfg.mssql_database)
     create_task.assert_called_once()
     bg_loop.assert_called_once_with(cfg)
     assert task is fake_task

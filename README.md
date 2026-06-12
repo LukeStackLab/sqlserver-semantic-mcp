@@ -145,6 +145,8 @@ See the full env-var matrix in [Configuration](#configuration).
 - **29 MCP tools** across 9 capability groups (metadata, relationship, semantic, object, query, policy, cache, metrics, workflow)
 - **Two-tier SQLite cache** — Structural Cache (warm on startup) + Semantic Cache (lazy + background fill)
 - **Cache-first startup** — reuse existing structural cache by default and avoid mandatory full warmup on every process start
+- **Automatic drift detection (L1 schema probe)** — a throttled, catalog-only fingerprint probe detects column type/length changes, new/dropped tables, index changes, and view/procedure/function body edits, then refreshes the cache automatically
+- **Per-table invalidation** — only tables whose own structure changed are re-analysed; views/functions depending on a changed table are cascaded dirty via `sys.sql_expression_dependencies`
 - **3-hash schema versioning** — detect when structural / object / comment changes invalidate cached analysis
 - **Policy-gated execution** — SELECT/INSERT/UPDATE/DELETE/… permissions, WHERE-clause requirements, row caps, schema/table allowlists
 - **Semantic classification** — automatic detection of fact / dimension / lookup / bridge / audit tables
@@ -176,8 +178,40 @@ SQL Server + SQLite
 
 | Layer | Contents | Strategy | Invalidation |
 |---|---|---|---|
-| **Structural Cache** | tables, columns, PK/FK, indexes, objects list, comments | warm on startup, SQLite persisted | `structural_hash` / `object_hash` / `comment_hash` mismatch |
-| **Semantic Cache** | table classification, column semantics, object definitions, dependencies | lazy + background incremental fill | hash change → rows marked `dirty` → recomputed |
+| **Structural Cache** | tables, columns, PK/FK, indexes, objects list, comments | warm on startup, SQLite persisted | schema probe drift, per-table `structural_hash` mismatch |
+| **Semantic Cache** | table classification, column semantics, object definitions, dependencies | lazy + background incremental fill | per-table hash change → affected rows marked `dirty` → recomputed |
+| **Fingerprint Baseline** | per-table / per-object catalog fingerprints (`modify_date` + column/index checksums + module definition hash) | written on every warmup | compared by the schema probe on each window |
+
+### Schema Drift Detection (L1 Probe)
+
+The cache is hash-driven, not TTL-driven: nothing expires on a clock, and an
+unchanged database costs zero re-fetches. Freshness is guaranteed by a
+lightweight probe that runs at most once per `SEMANTIC_MCP_PROBE_INTERVAL_S`
+(default 60s), triggered lazily by incoming tool calls:
+
+1. **Probe** — five catalog-only queries (`sys.tables`, `sys.columns`,
+   `sys.indexes`, `sys.sql_modules`, `sys.sql_expression_dependencies`)
+   compute per-table and per-object fingerprints in milliseconds, without
+   touching any data rows. Column type changes (`int → bigint`), length
+   changes (`nvarchar(4) → nvarchar(10)`), precision/nullability/collation
+   changes, index changes, and view/procedure/function body edits are all
+   captured.
+2. **Compare** — fingerprints are diffed against the baseline stored in
+   SQLite. No drift → done (the served response always comes from cache).
+3. **Refresh on drift** — the full structural snapshot is re-fetched, only
+   the *changed* tables' semantic rows are marked `dirty`, dropped
+   tables/objects are pruned, and modules that depend on a changed table
+   (which SQL Server does not touch when an underlying table changes) are
+   cascaded `dirty` via the dependency graph. The background fill loop then
+   recomputes the dirty rows.
+
+Validation behaviour is configurable via `SEMANTIC_MCP_CACHE_VALIDATION_MODE`:
+
+| Mode | Behaviour | Use when |
+|---|---|---|
+| `probe` *(default)* | Stale-while-revalidate: tool calls are served from cache immediately; the probe + refresh run in the background | Best balance for typical use |
+| `strict` | The tool call waits for the probe (and refresh, if drift) to finish before answering | Schema changes frequently and answers must never be stale |
+| `manual` | No probing; refresh only on startup or via `refresh_schema_cache` | Schema is effectively frozen; absolute minimum DB traffic |
 
 ---
 
@@ -259,6 +293,8 @@ All configuration is via environment variables with the `SEMANTIC_MCP_` prefix. 
 | `SEMANTIC_MCP_CACHE_PATH` | `./cache/semantic_mcp.db` | SQLite cache file location |
 | `SEMANTIC_MCP_CACHE_ENABLED` | `true` | Disable to skip startup warmup |
 | `SEMANTIC_MCP_STARTUP_MODE` | `cache_first` | `cache_first` reuses existing cache on restart; `full` always refreshes from SQL Server before serving |
+| `SEMANTIC_MCP_CACHE_VALIDATION_MODE` | `probe` | `probe` revalidates in the background on drift; `strict` blocks the call until validated; `manual` never probes |
+| `SEMANTIC_MCP_PROBE_INTERVAL_S` | `60` | Minimum seconds between schema probes (throttle window) |
 | `SEMANTIC_MCP_BACKGROUND_BATCH_SIZE` | `5` | Tables processed per background batch |
 | `SEMANTIC_MCP_BACKGROUND_INTERVAL_MS` | `500` | Delay between batches |
 | `SEMANTIC_MCP_POLICY_FILE` | *(builtin readonly)* | Path to policy JSON |
@@ -469,7 +505,7 @@ The server speaks MCP over stdio. On startup it:
 2. Reuses the existing Structural cache when `SEMANTIC_MCP_STARTUP_MODE=cache_first`, otherwise refreshes from SQL Server
 3. Enqueues all tables for Semantic analysis
 4. Launches the background fill task
-5. Accepts MCP tool/resource calls
+5. Accepts MCP tool/resource calls — each call lazily triggers the throttled schema probe (see *Schema Drift Detection*), so schema changes made while the server runs are picked up automatically
 
 Background fill uses exponential backoff (2ⁿ seconds, capped at 60s) on persistent errors to avoid log spam or CPU burn.
 
@@ -533,8 +569,10 @@ sqlserver_semantic_mcp/
 │   ├── cache/
 │   │   ├── store.py                  — SQLite DDL + init
 │   │   ├── structural.py             — hashing + warmup + snapshot persistence
+│   │   ├── probe.py                  — L1 catalog fingerprints + drift diff
+│   │   ├── revalidation.py           — throttled stale-while-revalidate orchestration
 │   │   └── semantic.py               — analysis/definition I/O + pending queue
-│   └── queries/                      — SQL Server queries (metadata / comments / objects)
+│   └── queries/                      — SQL Server queries (metadata / comments / objects / probe)
 ├── services/                         — 6 services (metadata / relationship / semantic / object / policy / query)
 └── server/
     ├── app.py                        — MCP Server, tool registry, JSON envelope
@@ -611,7 +649,9 @@ The Structural Cache may not have been populated yet. Check the startup logs for
 ## Limitations / Future Work
 
 - SQL intent analyzer is regex-based, not a full T-SQL parser — CTE-defined names may appear as tables. Use `validate_sql_against_policy` first when in doubt.
-- `STRING_AGG` used in the index query requires SQL Server 2017+. Older versions will need an alternative query.
+- `STRING_AGG` used in the index query requires SQL Server 2017+. Older versions will need an alternative query. The schema probe's `HASHBYTES` over `nvarchar(max)` definitions requires SQL Server 2016+.
+- The probe's column/index checksums use `CHECKSUM_AGG`/`BINARY_CHECKSUM` — a heuristic with a theoretical (astronomically small) collision chance. `refresh_schema_cache` always performs a full re-fetch regardless.
+- Encrypted modules (`WITH ENCRYPTION`) expose no definition; their probe fingerprint falls back to `modify_date` only.
 - `sys.extended_properties` reads require `VIEW DEFINITION` permission; comments on restricted objects won't appear in the cache.
 - Background fill is single-worker; on very large schemas the Semantic Cache may take time to converge (use `refresh_schema_cache` to force a structural refresh; semantic classification still fills lazily).
 

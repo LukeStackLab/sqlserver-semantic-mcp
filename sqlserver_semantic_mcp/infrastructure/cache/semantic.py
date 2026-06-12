@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional
 import aiosqlite
 
 
@@ -117,16 +117,46 @@ async def list_pending_table_analyses(
         return [(r["schema_name"], r["table_name"]) for r in await cur.fetchall()]
 
 
-async def enqueue_all_tables(db_path: str, database: str, structural_hash: str) -> int:
+async def enqueue_all_tables(db_path: str, database: str) -> int:
+    """Queue analysis for cached tables that have no semantic row yet.
+
+    Each row carries its own per-table structural hash from sc_tables.
+    """
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             "INSERT OR IGNORE INTO sem_table_analysis "
             "(database_name, schema_name, table_name, structural_hash, status) "
-            "SELECT ?, schema_name, table_name, ?, 'pending' "
+            "SELECT database_name, schema_name, table_name, "
+            "       COALESCE(structural_hash, ''), 'pending' "
             "FROM sc_tables WHERE database_name=?",
-            (database, structural_hash, database),
+            (database,),
         )
         await db.commit()
         cur = await db.execute("SELECT changes()")
         row = await cur.fetchone()
         return int(row[0]) if row and row[0] is not None else 0
+
+
+async def mark_objects_dirty(
+    db_path: str, database: str, keys: Iterable[tuple[str, str]],
+) -> int:
+    """Mark object analyses dirty by (schema_name, object_name).
+
+    Matched on schema+name (not object_type) because callers carry sys.objects
+    type codes while cached rows store client-facing type names.
+    """
+    pairs = list(keys)
+    if not pairs:
+        return 0
+    async with aiosqlite.connect(db_path) as db:
+        total = 0
+        for (schema, name) in pairs:
+            cur = await db.execute(
+                "UPDATE sem_object_definitions SET status='dirty' "
+                "WHERE database_name=? AND schema_name=? AND object_name=? "
+                "AND status<>'dirty'",
+                (database, schema, name),
+            )
+            total += cur.rowcount or 0
+        await db.commit()
+        return total

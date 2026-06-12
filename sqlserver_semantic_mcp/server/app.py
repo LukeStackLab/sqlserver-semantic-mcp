@@ -6,6 +6,7 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent
 
 from ..config import Config, get_config
+from ..infrastructure.cache import revalidation
 from ..services import metrics_service
 from ..services.policy_service import PolicyService
 from ..services.query_service import QueryService
@@ -101,6 +102,8 @@ async def _call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name not in _TOOL_REGISTRY:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
     _t, handler = _TOOL_REGISTRY[name]
+    if name != "refresh_schema_cache":  # the refresh tool warms up itself
+        await revalidation.maybe_revalidate(get_config())
     try:
         result = await handler(arguments or {})
         shaped = compact(result)

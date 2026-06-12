@@ -14,6 +14,7 @@ from ..queries.metadata_queries import (
     GET_FOREIGN_KEYS, GET_INDEXES, GET_OBJECTS,
 )
 from ..queries.comment_queries import GET_COMMENTS
+from .probe import SchemaFingerprints, fetch_fingerprints, write_fingerprints
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,35 @@ def compute_structural_hash(
     })
 
 
+def compute_table_hashes(snap: "StructuralSnapshot") -> dict[tuple[str, str], str]:
+    """Per-table structural hash over that table's columns/PKs/FKs/indexes.
+
+    Enables targeted invalidation: only tables whose own structure changed
+    get their semantic analysis marked dirty.
+    """
+    parts: dict[tuple[str, str], dict[str, list]] = {
+        (s, t): {"columns": [], "primary_keys": [],
+                 "foreign_keys": [], "indexes": []}
+        for (s, t) in snap.tables
+    }
+
+    def _bucket(rows, kind: str) -> None:
+        for row in rows:
+            key = (row[0], row[1])
+            if key in parts:
+                parts[key][kind].append(list(row))
+
+    _bucket(snap.columns, "columns")
+    _bucket(snap.primary_keys, "primary_keys")
+    _bucket(snap.foreign_keys, "foreign_keys")
+    _bucket(snap.indexes, "indexes")
+
+    return {
+        key: _sha256({k: sorted(v) for k, v in buckets.items()})
+        for key, buckets in parts.items()
+    }
+
+
 def compute_object_hash(objects) -> str:
     return _sha256({"objects": sorted([list(o) for o in objects])})
 
@@ -67,11 +97,13 @@ async def read_schema_version(db_path: str, database: str) -> Optional[dict]:
 
 async def write_structural_snapshot(
     db_path: str, database: str, snap: StructuralSnapshot,
+    fingerprints: Optional[SchemaFingerprints] = None,
 ) -> dict:
     structural_hash = compute_structural_hash(
         snap.tables, snap.columns, snap.primary_keys,
         snap.foreign_keys, snap.indexes,
     )
+    table_hashes = compute_table_hashes(snap)
     object_hash = compute_object_hash(snap.objects)
     comment_hash = compute_comment_hash(snap.comments)
     captured_at = datetime.now(timezone.utc).isoformat()
@@ -88,9 +120,11 @@ async def write_structural_snapshot(
                 )
 
             await db.executemany(
-                "INSERT INTO sc_tables (database_name, schema_name, table_name) "
-                "VALUES (?,?,?)",
-                [(database, s, t) for (s, t) in snap.tables],
+                "INSERT INTO sc_tables "
+                "(database_name, schema_name, table_name, structural_hash) "
+                "VALUES (?,?,?,?)",
+                [(database, s, t, table_hashes[(s, t)])
+                 for (s, t) in snap.tables],
             )
             await db.executemany(
                 "INSERT INTO sc_columns "
@@ -137,17 +171,45 @@ async def write_structural_snapshot(
                 (database, structural_hash, object_hash, comment_hash, captured_at),
             )
 
-            # Cascade: mark stale semantic rows dirty
+            # Targeted cascade: dirty only tables whose own structure changed
             await db.execute(
                 "UPDATE sem_table_analysis SET status='dirty' "
-                "WHERE database_name=? AND structural_hash<>?",
-                (database, structural_hash),
+                "WHERE database_name=:db AND EXISTS ("
+                "  SELECT 1 FROM sc_tables t"
+                "  WHERE t.database_name = sem_table_analysis.database_name"
+                "    AND t.schema_name = sem_table_analysis.schema_name"
+                "    AND t.table_name = sem_table_analysis.table_name"
+                "    AND t.structural_hash <> sem_table_analysis.structural_hash)",
+                {"db": database},
+            )
+            # Drop semantic rows for tables/objects no longer present
+            await db.execute(
+                "DELETE FROM sem_table_analysis "
+                "WHERE database_name=:db AND NOT EXISTS ("
+                "  SELECT 1 FROM sc_tables t"
+                "  WHERE t.database_name = sem_table_analysis.database_name"
+                "    AND t.schema_name = sem_table_analysis.schema_name"
+                "    AND t.table_name = sem_table_analysis.table_name)",
+                {"db": database},
             )
             await db.execute(
                 "UPDATE sem_object_definitions SET status='dirty' "
                 "WHERE database_name=? AND object_hash<>?",
                 (database, object_hash),
             )
+            await db.execute(
+                "DELETE FROM sem_object_definitions "
+                "WHERE database_name=:db AND NOT EXISTS ("
+                "  SELECT 1 FROM sc_objects o"
+                "  WHERE o.database_name = sem_object_definitions.database_name"
+                "    AND o.schema_name = sem_object_definitions.schema_name"
+                "    AND o.object_name = sem_object_definitions.object_name)",
+                {"db": database},
+            )
+
+            if fingerprints is not None:
+                await write_fingerprints(db, database, fingerprints)
+
             await db.commit()
         except Exception:
             await db.rollback()
@@ -161,7 +223,13 @@ async def write_structural_snapshot(
     }
 
 
-def fetch_snapshot_from_server(cfg: Config) -> StructuralSnapshot:
+def fetch_snapshot_from_server(
+    cfg: Config, conn: Optional[Any] = None,
+) -> StructuralSnapshot:
+    if conn is None:
+        with open_connection(cfg) as owned:
+            return fetch_snapshot_from_server(cfg, conn=owned)
+
     queries = (
         GET_TABLES,
         GET_COLUMNS,
@@ -172,14 +240,13 @@ def fetch_snapshot_from_server(cfg: Config) -> StructuralSnapshot:
         GET_COMMENTS,
     )
     results: list[list[tuple]] = []
-    with open_connection(cfg) as conn:
-        cursor = conn.cursor()
-        try:
-            for sql in queries:
-                cursor.execute(sql)
-                results.append(list(cursor.fetchall()))
-        finally:
-            cursor.close()
+    cursor = conn.cursor()
+    try:
+        for sql in queries:
+            cursor.execute(sql)
+            results.append(list(cursor.fetchall()))
+    finally:
+        cursor.close()
 
     return StructuralSnapshot(
         tables=results[0],
@@ -192,12 +259,32 @@ def fetch_snapshot_from_server(cfg: Config) -> StructuralSnapshot:
     )
 
 
-async def warmup_structural_cache(cfg: Config) -> dict:
-    """Fetch snapshot from SQL Server and write to SQLite. Returns hashes."""
-    snap = fetch_snapshot_from_server(cfg)
+def _fetch_warmup_data(cfg: Config) -> tuple[SchemaFingerprints, StructuralSnapshot]:
+    # Fingerprints first: a change landing between the two fetches then
+    # shows up as drift on the next probe instead of being missed.
+    with open_connection(cfg) as conn:
+        fps = fetch_fingerprints(cfg, conn=conn)
+        snap = fetch_snapshot_from_server(cfg, conn=conn)
+    return fps, snap
+
+
+async def warmup_structural_cache(
+    cfg: Config, fingerprints: Optional[SchemaFingerprints] = None,
+) -> dict:
+    """Fetch snapshot (and probe fingerprints) from SQL Server into SQLite.
+
+    Returns the new hashes. A pre-fetched fingerprint set (from the probe)
+    can be passed in to avoid re-running the probe queries.
+    """
+    if fingerprints is None:
+        fingerprints, snap = _fetch_warmup_data(cfg)
+    else:
+        snap = fetch_snapshot_from_server(cfg)
     logger.info(
         "Structural snapshot: %d tables, %d columns, %d FKs, %d objects",
         len(snap.tables), len(snap.columns),
         len(snap.foreign_keys), len(snap.objects),
     )
-    return await write_structural_snapshot(cfg.cache_path, cfg.mssql_database, snap)
+    return await write_structural_snapshot(
+        cfg.cache_path, cfg.mssql_database, snap, fingerprints=fingerprints,
+    )

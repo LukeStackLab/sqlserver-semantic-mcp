@@ -6,7 +6,6 @@ import aiosqlite
 from ..infrastructure.cache.semantic import (
     upsert_table_analysis, get_table_analysis,
 )
-from ..infrastructure.cache.structural import read_schema_version
 
 
 _AUDIT_COL_PATTERNS = {
@@ -32,12 +31,14 @@ async def _load_table_structure(
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
-            "SELECT 1 FROM sc_tables WHERE database_name=? "
+            "SELECT structural_hash FROM sc_tables WHERE database_name=? "
             "AND schema_name=? AND table_name=?",
             (database, schema, table),
         )
-        if not await cur.fetchone():
+        row = await cur.fetchone()
+        if not row:
             return None
+        table_hash = row["structural_hash"] or ""
 
         cur = await db.execute(
             "SELECT column_name, data_type, max_length, is_nullable, ordinal_position "
@@ -61,7 +62,8 @@ async def _load_table_structure(
         )
         fks = [dict(r) for r in await cur.fetchall()]
 
-    return {"columns": columns, "primary_key": pk, "foreign_keys": fks}
+    return {"columns": columns, "primary_key": pk, "foreign_keys": fks,
+            "structural_hash": table_hash}
 
 
 def _column_semantic(col: dict) -> Optional[str]:
@@ -119,19 +121,17 @@ async def classify_table(
     db_path: str, database: str, schema: str, table: str,
     *, force: bool = False,
 ) -> dict:
-    ver = await read_schema_version(db_path, database)
-    structural_hash = ver["structural_hash"] if ver else ""
+    struct = await _load_table_structure(db_path, database, schema, table)
+    if struct is None:
+        return {"type": "unknown", "confidence": 0.0,
+                "reasons": ["table not found"]}
+    structural_hash = struct["structural_hash"]
 
     if not force:
         cached = await get_table_analysis(db_path, database, schema, table)
         if cached and cached["status"] == "ready" \
                 and cached.get("structural_hash") == structural_hash:
             return cached["classification"]
-
-    struct = await _load_table_structure(db_path, database, schema, table)
-    if struct is None:
-        return {"type": "unknown", "confidence": 0.0,
-                "reasons": ["table not found"]}
 
     classification = _classify(struct, table)
     column_analysis = [
@@ -198,9 +198,6 @@ async def detect_lookup_tables(
     keyword: Optional[str] = None,
     confidence_min: float = 0.0,
 ) -> list[dict]:
-    ver = await read_schema_version(db_path, database)
-    current_hash = ver["structural_hash"] if ver else ""
-
     results: list[dict] = []
     need_classify: list[tuple[str, str]] = []
 
@@ -216,20 +213,27 @@ async def detect_lookup_tables(
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
-            "SELECT schema_name, table_name FROM sc_tables "
+            "SELECT schema_name, table_name, structural_hash FROM sc_tables "
             "WHERE database_name=?",
             (database,),
         )
-        all_tables = [(r["schema_name"], r["table_name"])
-                      for r in await cur.fetchall()
-                      if passes_filter(r["schema_name"], r["table_name"])]
+        table_hashes = {
+            (r["schema_name"], r["table_name"]): r["structural_hash"] or ""
+            for r in await cur.fetchall()
+            if passes_filter(r["schema_name"], r["table_name"])
+        }
+        all_tables = list(table_hashes)
 
-        # Fast path: read ready+fresh lookup rows from cache
+        # Fast path: ready rows whose per-table hash still matches sc_tables
         cur = await db.execute(
-            "SELECT schema_name, table_name, classification FROM sem_table_analysis "
-            "WHERE database_name=? AND status='ready' "
-            "AND structural_hash=? AND is_lookup=1",
-            (database, current_hash),
+            "SELECT a.schema_name, a.table_name, a.classification "
+            "FROM sem_table_analysis a JOIN sc_tables t "
+            "  ON t.database_name = a.database_name "
+            " AND t.schema_name = a.schema_name "
+            " AND t.table_name = a.table_name "
+            " AND t.structural_hash = a.structural_hash "
+            "WHERE a.database_name=? AND a.status='ready' AND a.is_lookup=1",
+            (database,),
         )
         cached_hits = {
             (r["schema_name"], r["table_name"]):
@@ -262,7 +266,8 @@ async def detect_lookup_tables(
             continue
         state = cache_state.get((s, t))
         # Needs classification if: no row, dirty/pending, or hash mismatch
-        if state is None or state[0] != "ready" or state[1] != current_hash:
+        if state is None or state[0] != "ready" \
+                or state[1] != table_hashes[(s, t)]:
             need_classify.append((s, t))
 
     for (s, t) in need_classify:

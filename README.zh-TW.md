@@ -137,6 +137,8 @@ sqlserver-semantic-mcp
 - **29 個 MCP 工具**,分佈於 9 個能力群組(metadata、relationship、semantic、object、query、policy、cache、metrics、workflow)
 - **雙層 SQLite 快取** — Structural Cache(啟動時預熱)+ Semantic Cache(延遲載入 + 背景填入)
 - **Cache-first 啟動** — 預設重用既有 structural cache,避免每次程序重啟都強制全量預熱
+- **自動結構漂移偵測(L1 schema 探針)** — 節流的純 catalog 指紋探針可偵測欄位型別/長度變更、表的新增/刪除、索引變更與 view/procedure/function 內文修改,並自動刷新快取
+- **逐表精準失效** — 只有自身結構變更的表會被重新分析;依賴變更表的 view/function 透過 `sys.sql_expression_dependencies` 連鎖標記為 dirty
 - **三重 hash schema 版本控制** — 偵測結構 / 物件 / 註解變更何時讓快取分析失效
 - **Policy 閘門執行** — SELECT/INSERT/UPDATE/DELETE/… 權限、WHERE 子句要求、資料列上限、schema/table 白名單
 - **語意分類** — 自動識別 fact / dimension / lookup / bridge / audit 表
@@ -168,8 +170,25 @@ SQL Server + SQLite
 
 | 層級 | 內容 | 策略 | 失效條件 |
 |---|---|---|---|
-| **Structural Cache** | 表、欄位、PK/FK、索引、物件清單、註解 | 啟動時預熱,SQLite 持久化 | `structural_hash` / `object_hash` / `comment_hash` 不一致 |
-| **Semantic Cache** | 表分類、欄位語意、物件定義、相依性 | 延遲 + 背景漸進填入 | hash 變更 → 標記為 `dirty` → 重新計算 |
+| **Structural Cache** | 表、欄位、PK/FK、索引、物件清單、註解 | 啟動時預熱,SQLite 持久化 | schema 探針偵測漂移、逐表 `structural_hash` 不一致 |
+| **Semantic Cache** | 表分類、欄位語意、物件定義、相依性 | 延遲 + 背景漸進填入 | 逐表 hash 變更 → 受影響列標記為 `dirty` → 重新計算 |
+| **指紋基準(Fingerprint Baseline)** | 逐表 / 逐物件的 catalog 指紋(`modify_date` + 欄位/索引 checksum + 模組定義 hash) | 每次預熱時寫入 | schema 探針逐窗口比對 |
+
+### 結構漂移偵測(L1 探針)
+
+快取採 hash 驅動而非 TTL 驅動:沒有任何東西因時間到期而失效,資料庫沒變動時就是零重抓成本。新鮮度由一個輕量探針保證,每 `SEMANTIC_MCP_PROBE_INTERVAL_S` 秒(預設 60)最多執行一次,由進來的工具呼叫惰性觸發:
+
+1. **探測** — 五個純 catalog 查詢(`sys.tables`、`sys.columns`、`sys.indexes`、`sys.sql_modules`、`sys.sql_expression_dependencies`)在毫秒級算出逐表與逐物件指紋,完全不碰資料列。欄位型別變更(`int → bigint`)、長度變更(`nvarchar(4) → nvarchar(10)`)、精度/可空性/定序變更、索引變更、view/procedure/function 內文修改全部涵蓋。
+2. **比對** — 指紋與 SQLite 中的基準逐筆 diff。沒有漂移 → 結束(回應永遠來自快取)。
+3. **漂移才刷新** — 重抓完整結構快照,只把*變動的*表的語意列標記為 `dirty`、清除已刪除的表/物件,並把依賴變動表的模組(SQL Server 在底層表變更時不會更新它們)透過相依圖連鎖標記為 `dirty`。背景填入迴圈隨後重新計算 dirty 列。
+
+驗證行為由 `SEMANTIC_MCP_CACHE_VALIDATION_MODE` 控制:
+
+| 模式 | 行為 | 適用情境 |
+|---|---|---|
+| `probe`(預設) | Stale-while-revalidate:工具呼叫立即從快取回應;探針與刷新在背景執行 | 一般情境的最佳平衡 |
+| `strict` | 工具呼叫等待探針(若有漂移則含刷新)完成後才回應 | schema 頻繁變動且回應絕不能過期 |
+| `manual` | 不探測;只在啟動或呼叫 `refresh_schema_cache` 時刷新 | schema 幾乎凍結;DB 流量需求降到最低 |
 
 ---
 
@@ -249,6 +268,8 @@ uv run python -m sqlserver_semantic_mcp.main
 | `SEMANTIC_MCP_CACHE_PATH` | `./cache/semantic_mcp.db` | SQLite 快取檔位置 |
 | `SEMANTIC_MCP_CACHE_ENABLED` | `true` | 關閉可略過啟動預熱 |
 | `SEMANTIC_MCP_STARTUP_MODE` | `cache_first` | `cache_first` 會在重啟時優先重用既有 cache;`full` 則每次都先向 SQL Server 重新抓結構 |
+| `SEMANTIC_MCP_CACHE_VALIDATION_MODE` | `probe` | `probe` 在背景偵測漂移並刷新;`strict` 等待驗證完成才回應;`manual` 不探測 |
+| `SEMANTIC_MCP_PROBE_INTERVAL_S` | `60` | 兩次 schema 探針之間的最小間隔秒數(節流窗口) |
 | `SEMANTIC_MCP_BACKGROUND_BATCH_SIZE` | `5` | 每次背景批次處理的表數 |
 | `SEMANTIC_MCP_BACKGROUND_INTERVAL_MS` | `500` | 批次之間的延遲 |
 | `SEMANTIC_MCP_POLICY_FILE` | *(內建唯讀)* | Policy JSON 檔路徑 |
@@ -459,7 +480,7 @@ python -m sqlserver_semantic_mcp.main
 2. 當 `SEMANTIC_MCP_STARTUP_MODE=cache_first` 時優先重用既有 Structural cache,否則再從 SQL Server 抓取新的快照
 3. 將所有表加入 Semantic 分析佇列
 4. 啟動背景填入任務
-5. 接受 MCP 工具/資源呼叫
+5. 接受 MCP 工具/資源呼叫 — 每次呼叫會惰性觸發節流的 schema 探針(見「結構漂移偵測」),伺服器執行期間的 schema 變更會被自動偵測
 
 背景填入對持續性錯誤採用指數退避(2ⁿ 秒,上限 60 秒),避免日誌洪流或 CPU 空轉。
 
@@ -523,8 +544,10 @@ sqlserver_semantic_mcp/
 │   ├── cache/
 │   │   ├── store.py                  — SQLite DDL + 初始化
 │   │   ├── structural.py             — hash + 預熱 + 快照持久化
+│   │   ├── probe.py                  — L1 catalog 指紋 + 漂移 diff
+│   │   ├── revalidation.py           — 節流的 stale-while-revalidate 編排
 │   │   └── semantic.py               — 分析/定義 I/O + pending 佇列
-│   └── queries/                      — SQL Server 查詢(metadata / 註解 / 物件)
+│   └── queries/                      — SQL Server 查詢(metadata / 註解 / 物件 / 探針)
 ├── services/                         — 6 個服務(metadata / relationship / semantic / object / policy / query)
 └── server/
     ├── app.py                        — MCP Server、工具註冊表、JSON envelope
@@ -601,7 +624,9 @@ Structural Cache 可能尚未填入。檢查啟動 log 中的預熱進度。可�
 ## 限制 / 未來工作
 
 - SQL 意圖分析器為 regex 基底,非完整 T-SQL parser — CTE 內定義的名稱可能被視為表。若有疑慮,請先使用 `validate_sql_against_policy`。
-- 索引查詢使用的 `STRING_AGG` 需 SQL Server 2017+。更舊版本需替代查詢。
+- 索引查詢使用的 `STRING_AGG` 需 SQL Server 2017+。更舊版本需替代查詢。探針對 `nvarchar(max)` 定義使用的 `HASHBYTES` 需 SQL Server 2016+。
+- 探針的欄位/索引 checksum 使用 `CHECKSUM_AGG`/`BINARY_CHECKSUM`,屬 heuristic,理論上存在極微小的碰撞機率。`refresh_schema_cache` 永遠執行完整重抓,不受此影響。
+- 加密模組(`WITH ENCRYPTION`)不暴露定義內文;其探針指紋退回僅用 `modify_date`。
 - `sys.extended_properties` 的讀取需要 `VIEW DEFINITION` 權限;受限物件的註解不會出現在快取中。
 - 背景填入採單一 worker;在非常龐大的 schema 上,Semantic Cache 可能需要時間才能收斂(使用 `refresh_schema_cache` 可強制結構重新整理;semantic 分類仍會延遲填入)。
 
