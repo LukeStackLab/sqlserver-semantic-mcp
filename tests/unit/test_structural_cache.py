@@ -3,10 +3,14 @@ import aiosqlite
 from unittest.mock import MagicMock, patch
 
 from sqlserver_semantic_mcp.infrastructure.cache.store import init_store
+from sqlserver_semantic_mcp.infrastructure.cache.semantic import (
+    get_table_analysis, upsert_table_analysis,
+)
 from sqlserver_semantic_mcp.infrastructure.cache.structural import (
     compute_structural_hash,
     compute_object_hash,
     compute_comment_hash,
+    compute_table_hashes,
     write_structural_snapshot,
     read_schema_version,
     StructuralSnapshot,
@@ -75,6 +79,99 @@ async def test_write_and_read_snapshot(tmp_path):
         assert (await cur.fetchone())[0] == 1
         cur = await db.execute("SELECT COUNT(*) FROM sc_comments")
         assert (await cur.fetchone())[0] == 1
+
+
+def _snap(tables, columns) -> StructuralSnapshot:
+    return StructuralSnapshot(
+        tables=tables, columns=columns, primary_keys=[],
+        foreign_keys=[], indexes=[], objects=[], comments=[],
+    )
+
+
+def test_table_hashes_are_per_table():
+    snap = _snap(
+        tables=[("dbo", "A"), ("dbo", "B")],
+        columns=[
+            ("dbo", "A", "Id", "int", None, 0, None, 1),
+            ("dbo", "B", "Id", "int", None, 0, None, 1),
+        ],
+    )
+    hashes = compute_table_hashes(snap)
+    assert set(hashes) == {("dbo", "A"), ("dbo", "B")}
+
+    # changing A's column type must not affect B's hash
+    snap2 = _snap(
+        tables=[("dbo", "A"), ("dbo", "B")],
+        columns=[
+            ("dbo", "A", "Id", "bigint", None, 0, None, 1),
+            ("dbo", "B", "Id", "int", None, 0, None, 1),
+        ],
+    )
+    hashes2 = compute_table_hashes(snap2)
+    assert hashes2[("dbo", "A")] != hashes[("dbo", "A")]
+    assert hashes2[("dbo", "B")] == hashes[("dbo", "B")]
+
+
+@pytest.mark.asyncio
+async def test_targeted_invalidation_only_dirties_changed_table(tmp_path):
+    db_path = str(tmp_path / "t.db")
+    await init_store(db_path)
+
+    snap_v1 = _snap(
+        tables=[("dbo", "A"), ("dbo", "B")],
+        columns=[
+            ("dbo", "A", "Name", "nvarchar", 4, 0, None, 1),
+            ("dbo", "B", "Id", "int", None, 0, None, 1),
+        ],
+    )
+    await write_structural_snapshot(db_path, "testdb", snap_v1)
+    hashes_v1 = compute_table_hashes(snap_v1)
+    for t in ("A", "B"):
+        await upsert_table_analysis(
+            db_path, "testdb", "dbo", t,
+            structural_hash=hashes_v1[("dbo", t)], status="ready",
+            classification={"type": "dimension", "confidence": 0.5},
+        )
+
+    # nvarchar(4) -> nvarchar(10) on A only
+    snap_v2 = _snap(
+        tables=[("dbo", "A"), ("dbo", "B")],
+        columns=[
+            ("dbo", "A", "Name", "nvarchar", 10, 0, None, 1),
+            ("dbo", "B", "Id", "int", None, 0, None, 1),
+        ],
+    )
+    await write_structural_snapshot(db_path, "testdb", snap_v2)
+
+    a = await get_table_analysis(db_path, "testdb", "dbo", "A")
+    b = await get_table_analysis(db_path, "testdb", "dbo", "B")
+    assert a["status"] == "dirty"
+    assert b["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_dropped_table_analysis_removed(tmp_path):
+    db_path = str(tmp_path / "t.db")
+    await init_store(db_path)
+
+    snap_v1 = _snap(
+        tables=[("dbo", "A"), ("dbo", "Gone")],
+        columns=[("dbo", "A", "Id", "int", None, 0, None, 1)],
+    )
+    await write_structural_snapshot(db_path, "testdb", snap_v1)
+    hashes = compute_table_hashes(snap_v1)
+    await upsert_table_analysis(
+        db_path, "testdb", "dbo", "Gone",
+        structural_hash=hashes[("dbo", "Gone")], status="ready",
+    )
+
+    snap_v2 = _snap(
+        tables=[("dbo", "A")],
+        columns=[("dbo", "A", "Id", "int", None, 0, None, 1)],
+    )
+    await write_structural_snapshot(db_path, "testdb", snap_v2)
+
+    assert await get_table_analysis(db_path, "testdb", "dbo", "Gone") is None
 
 
 def test_fetch_snapshot_from_server_uses_single_connection():

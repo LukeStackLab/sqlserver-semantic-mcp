@@ -51,12 +51,10 @@ async def test_enqueue_and_pending(tmp_path):
         columns=[], primary_keys=[], foreign_keys=[],
         indexes=[], objects=[], comments=[],
     )
-    res = await write_structural_snapshot(db_path, "db", snap)
-    inserted = await enqueue_all_tables(db_path, "db", res["structural_hash"])
+    await write_structural_snapshot(db_path, "db", snap)
+    inserted = await enqueue_all_tables(db_path, "db")
     assert inserted == 2
-    inserted_again = await enqueue_all_tables(
-        db_path, "db", res["structural_hash"],
-    )
+    inserted_again = await enqueue_all_tables(db_path, "db")
     assert inserted_again == 0
     pending = await list_pending_table_analyses(db_path, "db", 10)
     assert set(pending) == {("dbo", "A"), ("dbo", "B")}

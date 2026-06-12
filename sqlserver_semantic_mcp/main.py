@@ -48,18 +48,14 @@ async def _startup() -> asyncio.Task | None:
                     cfg.startup_mode,
                     existing["captured_at"],
                 )
-            result = await warmup_structural_cache(cfg)
-            structural_hash = result["structural_hash"]
+            await warmup_structural_cache(cfg)
         else:
             logger.info(
                 "Startup mode '%s' reuses existing cache (captured_at=%s)",
                 cfg.startup_mode,
                 existing["captured_at"],
             )
-            structural_hash = existing["structural_hash"]
-        await enqueue_all_tables(
-            cfg.cache_path, cfg.mssql_database, structural_hash,
-        )
+        await enqueue_all_tables(cfg.cache_path, cfg.mssql_database)
         bg_task = asyncio.create_task(background_fill_loop(cfg))
 
     register_all()

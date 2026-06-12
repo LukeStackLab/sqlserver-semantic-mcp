@@ -10,6 +10,8 @@ def env(monkeypatch, tmp_path):
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
     monkeypatch.setenv("SEMANTIC_MCP_CACHE_PATH", str(tmp_path / "m.db"))
+    # keep dispatcher tests hermetic: no background schema probe
+    monkeypatch.setenv("SEMANTIC_MCP_CACHE_VALIDATION_MODE", "manual")
     from sqlserver_semantic_mcp.config import reset_config
     reset_config()
 

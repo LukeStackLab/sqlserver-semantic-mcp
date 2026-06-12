@@ -1,6 +1,6 @@
 [project]
 name = "sqlserver-semantic-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "Semantic intelligence layer for SQL Server databases, exposed via MCP. A database understanding engine for AI agents (Claude Code CLI, Codex CLI, Claude Desktop, etc.)."
 readme = "README.md"
 requires-python = ">=3.11"

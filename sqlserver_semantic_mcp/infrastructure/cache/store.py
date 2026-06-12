@@ -5,7 +5,7 @@ import aiosqlite
 SCHEMA_TABLES = [
     "schema_version",
     "sc_tables", "sc_columns", "sc_primary_keys", "sc_foreign_keys",
-    "sc_indexes", "sc_objects", "sc_comments",
+    "sc_indexes", "sc_objects", "sc_comments", "sc_fingerprints",
     "sem_table_analysis", "sem_object_definitions",
 ]
 
@@ -19,9 +19,10 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 
 CREATE TABLE IF NOT EXISTS sc_tables (
-    database_name TEXT NOT NULL,
-    schema_name   TEXT NOT NULL,
-    table_name    TEXT NOT NULL,
+    database_name   TEXT NOT NULL,
+    schema_name     TEXT NOT NULL,
+    table_name      TEXT NOT NULL,
+    structural_hash TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (database_name, schema_name, table_name)
 );
 
@@ -88,6 +89,16 @@ CREATE TABLE IF NOT EXISTS sc_comments (
     PRIMARY KEY (database_name, schema_name, object_name, column_name)
 );
 
+CREATE TABLE IF NOT EXISTS sc_fingerprints (
+    database_name TEXT NOT NULL,
+    kind          TEXT NOT NULL,           -- 'table' | 'object'
+    schema_name   TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    object_type   TEXT NOT NULL DEFAULT '',
+    fingerprint   TEXT NOT NULL,
+    PRIMARY KEY (database_name, kind, schema_name, name, object_type)
+);
+
 CREATE TABLE IF NOT EXISTS sem_table_analysis (
     database_name   TEXT NOT NULL,
     schema_name     TEXT NOT NULL,
@@ -141,10 +152,22 @@ CREATE INDEX IF NOT EXISTS idx_tool_metrics_name
 """
 
 
+async def _migrate(db: aiosqlite.Connection) -> None:
+    # v0.6: per-table structural_hash on sc_tables (pre-existing cache files)
+    cur = await db.execute("PRAGMA table_info(sc_tables)")
+    cols = {row[1] for row in await cur.fetchall()}
+    if "structural_hash" not in cols:
+        await db.execute(
+            "ALTER TABLE sc_tables "
+            "ADD COLUMN structural_hash TEXT NOT NULL DEFAULT ''"
+        )
+
+
 async def init_store(db_path: str) -> None:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(SCHEMA_DDL)
+        await _migrate(db)
         await db.commit()
 
 

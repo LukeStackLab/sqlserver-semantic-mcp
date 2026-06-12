@@ -35,8 +35,8 @@ async def test_background_processes_pending(tmp_path, monkeypatch):
         foreign_keys=[],
         indexes=[], objects=[], comments=[],
     )
-    res = await write_structural_snapshot(cfg.cache_path, "testdb", snap)
-    await enqueue_all_tables(cfg.cache_path, "testdb", res["structural_hash"])
+    await write_structural_snapshot(cfg.cache_path, "testdb", snap)
+    await enqueue_all_tables(cfg.cache_path, "testdb")
 
     processed = await run_background_fill_once(cfg)
     assert processed >= 2
