@@ -27,7 +27,7 @@ def plan_or_execute_query(
 
     mode:
       * ``auto``           — execute if safe, otherwise return plan
-      * ``validate_only``  — validate and stop
+      * ``validate``       — validate + risk breakdown, then stop
       * ``dry_run``        — return preview (validation + shape, no side effects)
       * ``execute_if_safe``— same as ``auto`` (kept as alias for clarity)
     """
@@ -35,8 +35,10 @@ def plan_or_execute_query(
     database = cfg.mssql_database
 
     # Explicit sub-modes short-circuit routing.
-    if mode == "validate_only":
+    if mode == "validate":
         payload = query_service.validate_query(query, database=database)
+        intent = policy.analyze(query)
+        risk_level, risks = _assess_risk(intent, policy, cfg, payload["allowed"])
         return ToolEnvelope(
             kind="plan_or_execute_query",
             detail=detail,
@@ -45,7 +47,10 @@ def plan_or_execute_query(
             recommended_tool=(
                 "plan_or_execute_query" if payload["allowed"] else "validate_query"
             ),
-            data={"path": "direct_validate", "executed": False, **payload},
+            data={
+                "path": "direct_validate", "executed": False,
+                "risk_level": risk_level, "risks": risks, **payload,
+            },
         ).to_dict()
 
     if mode == "dry_run":
@@ -118,3 +123,34 @@ def plan_or_execute_query(
             "route": decision.to_dict(),
         },
     ).to_dict()
+
+
+def _assess_risk(intent, policy, cfg, allowed):
+    """Port of ``recommendations.estimate_execution_risk``'s risk accumulation.
+
+    Returns a concise ``(level, risks_list)`` pair — callers that already have
+    the full intent/payload should not need the intent re-serialized here.
+    """
+    order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+    level = "low"
+    risks = []
+
+    def bump(new):
+        nonlocal level
+        if order[new] > order[level]:
+            level = new
+
+    if intent.risk_level.value in ("critical", "high"):
+        bump(intent.risk_level.value)
+        risks.append({"kind": "policy_risk",
+                      "detail": f"{intent.primary_operation.value} is "
+                                f"{intent.risk_level.value}-risk"})
+    if intent.is_multi_statement and not policy.current_policy().constraints.allow_multi_statement:
+        bump("high"); risks.append({"kind": "policy_risk", "detail": "multi-statement disallowed"})
+    if intent.has_unqualified_tables:
+        bump("medium"); risks.append({"kind": "schema_qualification_risk", "detail": "unqualified tables"})
+    if intent.contains_dynamic_sql:
+        bump("high"); risks.append({"kind": "dynamic_sql_risk", "detail": "dynamic SQL not inspectable"})
+    if intent.primary_operation.value == "SELECT" and not intent.has_top_clause and not intent.has_where_clause:
+        bump("medium"); risks.append({"kind": "payload_risk", "detail": "SELECT without TOP/WHERE"})
+    return level, risks

@@ -23,18 +23,46 @@ def ctx(monkeypatch):
     return {"cfg": cfg, "policy": policy, "query": query}
 
 
-def test_validate_only_mode(ctx):
+def test_validate_mode(ctx):
     env = plan_or_execute_query(
         "SELECT * FROM dbo.T",
         policy=ctx["policy"],
         query_service=ctx["query"],
-        mode="validate_only",
+        mode="validate",
         cfg=ctx["cfg"],
     )
     assert env["kind"] == "plan_or_execute_query"
     assert env["data"]["path"] == "direct_validate"
     assert env["data"]["executed"] is False
     assert env["data"]["allowed"] is True
+
+
+def test_validate_mode_includes_risk(ctx):
+    env = plan_or_execute_query(
+        "SELECT * FROM dbo.BigTable",
+        policy=ctx["policy"],
+        query_service=ctx["query"],
+        mode="validate",
+        cfg=ctx["cfg"],
+    )
+    d = env["data"]
+    assert d["path"] == "direct_validate"
+    assert "risk_level" in d and "risks" in d
+
+
+def test_validate_only_alias_removed(ctx):
+    # Old mode name no longer short-circuits — falls through to auto routing.
+    env = plan_or_execute_query(
+        "SELECT 1",
+        policy=ctx["policy"],
+        query_service=ctx["query"],
+        mode="validate_only",
+        cfg=ctx["cfg"],
+    )
+    assert (
+        env["data"].get("path") != "direct_validate"
+        or "risk_level" not in env["data"]
+    )
 
 
 def test_disallowed_query_returns_validate_envelope(ctx):
