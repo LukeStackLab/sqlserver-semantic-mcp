@@ -38,7 +38,7 @@ def plan_or_execute_query(
     if mode == "validate":
         payload = query_service.validate_query(query, database=database)
         intent = policy.analyze(query)
-        risk_level, risks = _assess_risk(intent, policy, cfg, payload["allowed"])
+        risk_level, risks = _assess_risk(intent, policy)
         return ToolEnvelope(
             kind="plan_or_execute_query",
             detail=detail,
@@ -125,7 +125,7 @@ def plan_or_execute_query(
     ).to_dict()
 
 
-def _assess_risk(intent, policy, cfg, allowed):
+def _assess_risk(intent, policy):
     """Port of ``recommendations.estimate_execution_risk``'s risk accumulation.
 
     Returns a concise ``(level, risks_list)`` pair — callers that already have

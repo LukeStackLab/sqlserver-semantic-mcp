@@ -47,11 +47,20 @@ def test_validate_mode_includes_risk(ctx):
     )
     d = env["data"]
     assert d["path"] == "direct_validate"
-    assert "risk_level" in d and "risks" in d
+    assert d["risk_level"] == "medium"
+    assert any(r["kind"] == "payload_risk" for r in d["risks"])
 
 
-def test_validate_only_alias_removed(ctx):
+@patch("sqlserver_semantic_mcp.services.query_service.open_connection")
+def test_validate_only_alias_removed(mock_open, ctx):
     # Old mode name no longer short-circuits — falls through to auto routing.
+    conn = MagicMock()
+    cursor = MagicMock()
+    cursor.description = [("id",)]
+    cursor.fetchmany.return_value = [(1,)]
+    conn.cursor.return_value = cursor
+    mock_open.return_value.__enter__.return_value = conn
+
     env = plan_or_execute_query(
         "SELECT 1",
         policy=ctx["policy"],
@@ -59,10 +68,7 @@ def test_validate_only_alias_removed(ctx):
         mode="validate_only",
         cfg=ctx["cfg"],
     )
-    assert (
-        env["data"].get("path") != "direct_validate"
-        or "risk_level" not in env["data"]
-    )
+    assert env["data"].get("path") != "direct_validate"
 
 
 def test_disallowed_query_returns_validate_envelope(ctx):
