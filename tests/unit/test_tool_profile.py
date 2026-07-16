@@ -23,7 +23,7 @@ def test_profile_defaults_to_all_registers_every_group(base_env):
     expected = {
         "get_tables", "describe_table",
         "get_table_relationships", "find_join_path", "get_dependency_chain",
-        "describe_view", "describe_procedure", "trace_object_dependencies",
+        "describe_object",
         "detect_lookup_tables",
         "get_execution_policy", "validate_sql_against_policy", "refresh_policy",
         "validate_query", "run_safe_query",
@@ -46,7 +46,7 @@ def test_profile_metadata_only_registers_two_tools(base_env, monkeypatch):
     names = set(_TOOL_REGISTRY.keys())
     assert names == {"get_tables", "describe_table"}
     assert "classify_table" not in names
-    assert "describe_view" not in names
+    assert "describe_object" not in names
     assert "run_safe_query" not in names
 
 
@@ -63,7 +63,7 @@ def test_profile_multiple_groups(base_env, monkeypatch):
     names = set(_TOOL_REGISTRY.keys())
     assert "get_tables" in names
     assert "detect_lookup_tables" in names
-    assert "describe_view" not in names
+    assert "describe_object" not in names
     assert "run_safe_query" not in names
 
 

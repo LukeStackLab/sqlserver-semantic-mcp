@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from mcp.types import Tool
 
-from ...services import relationship_service, semantic_service, object_service
+from ...services import relationship_service, semantic_service
 from ..app import get_context, register_tool
 
 
@@ -105,27 +105,6 @@ def register() -> None:
         ),
         _score_join,
     )
-    register_tool(
-        Tool(
-            name="summarize_object_for_impact",
-            description=(
-                "Return a compact impact summary for a VIEW/PROCEDURE/FUNCTION "
-                "— reads, writes, depends_on."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schema": {"type": "string"},
-                    "name":   {"type": "string"},
-                    "type":   {"type": "string",
-                               "enum": ["VIEW", "PROCEDURE", "FUNCTION"]},
-                },
-                "required": ["schema", "name", "type"],
-            },
-        ),
-        _summarize_object,
-    )
-
 
 # ---- handlers ---------------------------------------------------------------
 
@@ -228,37 +207,5 @@ async def _score_join(args: dict) -> dict:
             "hops": hops,
             "path": path,
             "penalties": penalties,
-        },
-    }
-
-
-async def _summarize_object(args: dict) -> dict:
-    ctx = get_context()
-    obj = await object_service.describe_object(
-        args["schema"], args["name"], args["type"], ctx.cfg,
-    )
-    if not obj or obj.get("status") == "error":
-        return {
-            "kind": "summarize_object_for_impact",
-            "detail": "brief",
-            "next_action": "revise",
-            "recommended_tool": "describe_view",
-            "data": {
-                "object": f"{args['schema']}.{args['name']}",
-                "type": args["type"],
-                "error": obj.get("error_message") if obj else "not found",
-            },
-        }
-    return {
-        "kind": "summarize_object_for_impact",
-        "detail": "brief",
-        "next_action": "trace_impact",
-        "recommended_tool": "trace_object_dependencies",
-        "data": {
-            "object": f"{args['schema']}.{args['name']}",
-            "type": args["type"],
-            "reads": list(obj.get("read_tables", []) or []),
-            "writes": list(obj.get("write_tables", []) or []),
-            "depends_on": list(obj.get("dependencies", []) or []),
         },
     }
