@@ -4,7 +4,6 @@ import pytest
 from sqlserver_semantic_mcp.server.tools.shape import (
     resolve_detail,
     project_describe_table,
-    project_get_columns,
     project_classify,
     project_describe_object,
     DetailError,
@@ -172,44 +171,6 @@ def test_describe_table_brief_important_columns_caps_at_eight():
     # must start with PK, then FK
     assert out["important_columns"][0] == "c1"
     assert out["important_columns"][1] == "c2"
-
-
-# ---------- get_columns projection ----------
-
-_FULL_COLS = [
-    {"column_name": "Id", "data_type": "int", "is_nullable": False,
-     "default_value": None, "description": None, "max_length": 4,
-     "ordinal_position": 1},
-    {"column_name": "CreatedAt", "data_type": "datetime", "is_nullable": False,
-     "default_value": None, "description": None, "max_length": 8,
-     "ordinal_position": 2},
-]
-
-
-def test_get_columns_brief_shape():
-    out = project_get_columns(_FULL_COLS, detail="brief",
-                              semantic_map={"CreatedAt": "audit_timestamp"})
-    assert out == [
-        {"name": "Id", "semantic": "generic"},
-        {"name": "CreatedAt", "semantic": "audit_timestamp"},
-    ]
-
-
-def test_get_columns_standard_shape():
-    out = project_get_columns(_FULL_COLS, detail="standard",
-                              semantic_map={})
-    assert out[0] == {"name": "Id", "type": "int",
-                      "is_nullable": False, "semantic": "generic"}
-
-
-def test_get_columns_full_shape():
-    out = project_get_columns(_FULL_COLS, detail="full",
-                              semantic_map={"CreatedAt": "audit_timestamp"})
-    assert out[1] == {
-        "name": "CreatedAt", "type": "datetime", "max_length": 8,
-        "is_nullable": False, "default_value": None, "description": None,
-        "semantic": "audit_timestamp",
-    }
 
 
 # ---------- classify projection ----------

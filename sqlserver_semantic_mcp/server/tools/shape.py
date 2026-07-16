@@ -122,37 +122,6 @@ def project_describe_table(
     }
 
 
-def project_get_columns(
-    columns: list[dict], detail: str,
-    semantic_map: dict[str, str],
-) -> list[dict]:
-    def semantic_for(name: str) -> str:
-        return semantic_map.get(name) or "generic"
-
-    if detail == "brief":
-        return [
-            {"name": c["column_name"], "semantic": semantic_for(c["column_name"])}
-            for c in columns
-        ]
-    if detail == "standard":
-        return [
-            {"name": c["column_name"], "type": c.get("data_type"),
-             "is_nullable": bool(c.get("is_nullable")),
-             "semantic": semantic_for(c["column_name"])}
-            for c in columns
-        ]
-    # full
-    return [
-        {"name": c["column_name"], "type": c.get("data_type"),
-         "max_length": c.get("max_length"),
-         "is_nullable": bool(c.get("is_nullable")),
-         "default_value": c.get("default_value"),
-         "description": c.get("description"),
-         "semantic": semantic_for(c["column_name"])}
-        for c in columns
-    ]
-
-
 def project_classify(classification: dict, detail: str) -> dict:
     if detail == "brief":
         return {

@@ -11,7 +11,7 @@ def test_registrations_load(monkeypatch):
     register_all()
     expected = [
         # metadata
-        "get_tables", "describe_table", "get_columns",
+        "get_tables", "describe_table",
         # relationship
         "get_table_relationships", "find_join_path", "get_dependency_chain",
         # object
@@ -28,6 +28,22 @@ def test_registrations_load(monkeypatch):
     for name in expected:
         assert name in _TOOL_REGISTRY, f"tool not registered: {name}"
     assert len(_TOOL_REGISTRY) >= len(expected)
+
+
+def test_get_columns_tool_removed(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    names = set(_TOOL_REGISTRY.keys())
+    assert "get_columns" not in names
+    assert "describe_table" in names
 
 
 def test_duplicate_tool_registration_raises(monkeypatch):

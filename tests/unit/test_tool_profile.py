@@ -21,7 +21,7 @@ def test_profile_defaults_to_all_registers_every_group(base_env):
     register_all()
     # All tool groups registered
     expected = {
-        "get_tables", "describe_table", "get_columns",
+        "get_tables", "describe_table",
         "get_table_relationships", "find_join_path", "get_dependency_chain",
         "describe_view", "describe_procedure", "trace_object_dependencies",
         "classify_table", "analyze_columns", "detect_lookup_tables",
@@ -33,7 +33,7 @@ def test_profile_defaults_to_all_registers_every_group(base_env):
     assert expected.issubset(registered)
 
 
-def test_profile_metadata_only_registers_three_tools(base_env, monkeypatch):
+def test_profile_metadata_only_registers_two_tools(base_env, monkeypatch):
     monkeypatch.setenv("SEMANTIC_MCP_TOOL_PROFILE", "metadata")
     from sqlserver_semantic_mcp.config import reset_config
     from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
@@ -44,7 +44,7 @@ def test_profile_metadata_only_registers_three_tools(base_env, monkeypatch):
     register_all()
 
     names = set(_TOOL_REGISTRY.keys())
-    assert names >= {"get_tables", "describe_table", "get_columns"}
+    assert names == {"get_tables", "describe_table"}
     assert "classify_table" not in names
     assert "describe_view" not in names
     assert "run_safe_query" not in names
