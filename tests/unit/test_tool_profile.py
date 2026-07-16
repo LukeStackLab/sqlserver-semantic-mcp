@@ -25,7 +25,7 @@ def test_profile_defaults_to_all_registers_every_group(base_env):
         "get_table_relationships", "find_join_path", "get_dependency_chain",
         "describe_object",
         "detect_lookup_tables",
-        "get_execution_policy", "validate_sql_against_policy", "refresh_policy",
+        "get_execution_policy",
         "plan_or_execute_query",
         "refresh_schema_cache",
     }

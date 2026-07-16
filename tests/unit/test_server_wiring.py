@@ -19,7 +19,7 @@ def test_registrations_load(monkeypatch):
         # semantic
         "detect_lookup_tables",
         # policy
-        "get_execution_policy", "validate_sql_against_policy", "refresh_policy",
+        "get_execution_policy",
         # query
         "plan_or_execute_query",
         # cache
@@ -128,6 +128,23 @@ def test_object_tools_consolidated(monkeypatch):
     assert "describe_object" in names
     for gone in ("describe_view", "describe_procedure",
                  "trace_object_dependencies", "summarize_object_for_impact"):
+        assert gone not in names
+
+
+def test_policy_tools_consolidated(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    names = set(_TOOL_REGISTRY.keys())
+    assert "get_execution_policy" in names
+    for gone in ("validate_sql_against_policy", "refresh_policy"):
         assert gone not in names
 
 
