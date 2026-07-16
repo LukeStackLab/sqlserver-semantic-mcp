@@ -148,6 +148,23 @@ def test_policy_tools_consolidated(monkeypatch):
         assert gone not in names
 
 
+def test_metrics_tools_consolidated(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    names = set(_TOOL_REGISTRY.keys())
+    assert "tool_metrics" in names
+    for gone in ("get_tool_metrics", "reset_tool_metrics"):
+        assert gone not in names
+
+
 def test_duplicate_tool_registration_raises(monkeypatch):
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
