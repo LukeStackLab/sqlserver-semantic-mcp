@@ -4,49 +4,9 @@ from mcp.types import Tool
 
 from ...services import semantic_service
 from ..app import get_context, register_tool
-from .shape import project_classify, resolve_detail
-
-
-_DETAIL_PROP = {
-    "type": "string", "enum": ["brief", "standard", "full"],
-    "default": "brief",
-    "description": "brief = type+confidence only; standard/full include reasons.",
-}
 
 
 def register() -> None:
-    register_tool(
-        Tool(
-            name="classify_table",
-            description="Classify a table (fact / dimension / lookup / bridge / audit).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schema": {"type": "string"},
-                    "table":  {"type": "string"},
-                    "force":  {"type": "boolean", "default": False},
-                    "detail": _DETAIL_PROP,
-                },
-                "required": ["schema", "table"],
-            },
-        ),
-        _classify,
-    )
-    register_tool(
-        Tool(
-            name="analyze_columns",
-            description="Return semantic labels for each column (audit, status, etc.).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schema": {"type": "string"},
-                    "table":  {"type": "string"},
-                },
-                "required": ["schema", "table"],
-            },
-        ),
-        _columns,
-    )
     register_tool(
         Tool(
             name="detect_lookup_tables",
@@ -80,25 +40,6 @@ def _normalize_schema_filter(raw) -> Optional[list[str]]:
         vals = [s for s in raw if isinstance(s, str) and s]
         return vals or None
     return None
-
-
-async def _classify(args: dict) -> dict:
-    ctx = get_context()
-    detail = resolve_detail(args)
-    classification = await semantic_service.classify_table(
-        ctx.cfg.cache_path, ctx.cfg.mssql_database,
-        args["schema"], args["table"],
-        force=args.get("force", False),
-    )
-    return project_classify(classification, detail)
-
-
-async def _columns(args: dict) -> list[dict]:
-    ctx = get_context()
-    return await semantic_service.analyze_columns(
-        ctx.cfg.cache_path, ctx.cfg.mssql_database,
-        args["schema"], args["table"],
-    )
 
 
 async def _lookups(args: dict) -> list[dict]:

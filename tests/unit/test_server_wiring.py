@@ -17,7 +17,7 @@ def test_registrations_load(monkeypatch):
         # object
         "describe_view", "describe_procedure", "trace_object_dependencies",
         # semantic
-        "classify_table", "analyze_columns", "detect_lookup_tables",
+        "detect_lookup_tables",
         # policy
         "get_execution_policy", "validate_sql_against_policy", "refresh_policy",
         # query
@@ -44,6 +44,23 @@ def test_get_columns_tool_removed(monkeypatch):
     names = set(_TOOL_REGISTRY.keys())
     assert "get_columns" not in names
     assert "describe_table" in names
+
+
+def test_classify_and_analyze_tools_removed(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    names = set(_TOOL_REGISTRY.keys())
+    assert "classify_table" not in names
+    assert "analyze_columns" not in names
+    assert "detect_lookup_tables" in names
 
 
 def test_duplicate_tool_registration_raises(monkeypatch):
