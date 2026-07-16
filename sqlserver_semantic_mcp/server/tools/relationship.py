@@ -1,7 +1,10 @@
 from mcp.types import Tool
 
-from ...services import relationship_service
+from ...services import relationship_service, semantic_service
 from ..app import get_context, register_tool
+
+
+_CLASSIFICATION_PENALTY = {"bridge": 0.25, "audit": 0.2, "lookup": 0.1}
 
 
 def register() -> None:
@@ -37,6 +40,10 @@ def register() -> None:
                     "to_schema":   {"type": "string"},
                     "to_table":    {"type": "string"},
                     "max_hops":    {"type": "integer", "minimum": 1, "default": 5},
+                    "score": {"type": "boolean", "default": False,
+                              "description": "true = also rank the path "
+                                             "(penalises extra/bridge/audit/"
+                                             "lookup hops)."},
                 },
                 "required": ["from_schema", "from_table", "to_schema", "to_table"],
             },
@@ -84,7 +91,34 @@ async def _path(args: dict) -> dict:
         args["to_schema"], args["to_table"],
         max_hops=args.get("max_hops", 5),
     )
-    return {"found": path is not None, "path": path or []}
+    if not args.get("score"):
+        return {"found": path is not None, "path": path or []}
+
+    if path is None:
+        return {"found": False, "confidence": 0.0, "hops": 0, "path": [],
+                "penalties": [], "next_action": "broaden_or_pick_different_start",
+                "recommended_tool": "discover_relevant_tables"}
+
+    hops = len(path)
+    score = 1.0 - (0.15 * max(hops - 1, 0))
+    penalties: list[dict] = []
+    for edge in path:
+        schema, table = edge.get("to_schema"), edge.get("to_table")
+        if not schema or not table:
+            continue
+        cls = await semantic_service.classify_table(
+            ctx.cfg.cache_path, ctx.cfg.mssql_database, schema, table)
+        pen = _CLASSIFICATION_PENALTY.get(cls.get("type"), 0.0)
+        if pen:
+            score -= pen
+            penalties.append({"at": f"{schema}.{table}",
+                              "classification": cls.get("type"), "penalty": pen})
+    score = max(0.0, min(1.0, score))
+    return {"found": True, "confidence": round(score, 3), "hops": hops,
+            "path": path, "penalties": penalties,
+            "next_action": "execute" if score >= 0.5 else "consider_alternatives",
+            "recommended_tool": ("plan_or_execute_query" if score >= 0.5
+                                 else "find_join_path")}
 
 
 async def _chain(args: dict) -> list[dict]:

@@ -56,7 +56,7 @@ def suggest_next_tool(
         next_action = "execute"
         rationale.append("join path ready — draft SQL and execute via fast path")
     elif have_candidates:
-        recommended = ["describe_table", "find_join_path", "score_join_candidate"]
+        recommended = ["describe_table", "find_join_path"]
         next_action = "inspect_or_join"
         rationale.append("candidates narrowed — inspect and compute join path")
     elif goal:

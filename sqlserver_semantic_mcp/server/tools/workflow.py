@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from mcp.types import Tool
 
-from ...services import relationship_service, semantic_service
 from ..app import get_context, register_tool
 
 
@@ -83,28 +82,6 @@ def register() -> None:
         ),
         _bundle,
     )
-    register_tool(
-        Tool(
-            name="score_join_candidate",
-            description=(
-                "Compute a usability score for a join path candidate. "
-                "Penalises excess hops and bridge/audit/lookup hops."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "from_schema": {"type": "string"},
-                    "from_table":  {"type": "string"},
-                    "to_schema":   {"type": "string"},
-                    "to_table":    {"type": "string"},
-                    "max_hops":    {"type": "integer", "minimum": 1, "default": 5},
-                },
-                "required": ["from_schema", "from_table",
-                             "to_schema", "to_table"],
-            },
-        ),
-        _score_join,
-    )
 
 # ---- handlers ---------------------------------------------------------------
 
@@ -139,73 +116,3 @@ async def _bundle(args: dict) -> dict:
         goal=args.get("goal", "joining"),
         detail=args.get("detail", "brief"),
     )
-
-
-# ---- reasoning helpers ------------------------------------------------------
-
-
-_CLASSIFICATION_PENALTY = {
-    "bridge": 0.25,
-    "audit":  0.2,
-    "lookup": 0.1,
-}
-
-
-async def _score_join(args: dict) -> dict:
-    ctx = get_context()
-    path = await relationship_service.find_join_path(
-        ctx.cfg.cache_path, ctx.cfg.mssql_database,
-        args["from_schema"], args["from_table"],
-        args["to_schema"], args["to_table"],
-        max_hops=args.get("max_hops", 5),
-    )
-
-    if path is None:
-        return {
-            "kind": "score_join_candidate",
-            "detail": "brief",
-            "found": False,
-            "next_action": "broaden_or_pick_different_start",
-            "recommended_tool": "discover_relevant_tables",
-            "data": {"score": 0.0, "path": [], "penalties": []},
-        }
-
-    hops = len(path)
-    score = 1.0 - (0.15 * max(hops - 1, 0))
-    penalties: list[dict] = []
-
-    for edge in path:
-        schema = edge.get("to_schema")
-        table = edge.get("to_table")
-        if not schema or not table:
-            continue
-        cls = await semantic_service.classify_table(
-            ctx.cfg.cache_path, ctx.cfg.mssql_database, schema, table,
-        )
-        penalty = _CLASSIFICATION_PENALTY.get(cls.get("type"), 0.0)
-        if penalty:
-            score -= penalty
-            penalties.append({
-                "at": f"{schema}.{table}",
-                "classification": cls.get("type"),
-                "penalty": penalty,
-            })
-
-    score = max(0.0, min(1.0, score))
-
-    return {
-        "kind": "score_join_candidate",
-        "detail": "brief",
-        "found": True,
-        "confidence": score,
-        "next_action": "execute" if score >= 0.5 else "consider_alternatives",
-        "recommended_tool": (
-            "plan_or_execute_query" if score >= 0.5 else "find_join_path"
-        ),
-        "data": {
-            "score": round(score, 3),
-            "hops": hops,
-            "path": path,
-            "penalties": penalties,
-        },
-    }

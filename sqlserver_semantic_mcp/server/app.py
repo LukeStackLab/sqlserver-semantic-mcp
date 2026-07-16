@@ -23,7 +23,6 @@ _WORKFLOW_TOOLS = frozenset({
     "suggest_next_tool",
     "estimate_execution_risk",
     "bundle_context_for_next_step",
-    "score_join_candidate",
 })
 
 
