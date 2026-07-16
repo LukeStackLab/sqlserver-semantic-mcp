@@ -1,9 +1,8 @@
 """Query service — validation / preview / execution.
 
-v0.5 splits the old ``run_safe_query()`` into three explicit phases so
-the workflow layer can route an agent's request down the shortest safe
-path. ``run_safe_query()`` is kept as a thin wrapper over
-``execute_query`` for backwards compatibility.
+v0.5 splits query handling into three explicit phases (``validate_query``,
+``preview_query``, ``execute_query``) so the workflow layer can route an
+agent's request down the shortest safe path.
 """
 from __future__ import annotations
 
@@ -17,12 +16,6 @@ from ..policy.analyzer import SqlIntent
 from .policy_service import PolicyService, intent_to_dict
 
 logger = logging.getLogger(__name__)
-
-
-class QueryExecutionMode(str, Enum):
-    VALIDATE_ONLY   = "validate_only"
-    DRY_RUN         = "dry_run"
-    EXECUTE_IF_SAFE = "execute_if_safe"
 
 
 class AffectedRowsPolicyMode(str, Enum):
@@ -73,11 +66,6 @@ class QueryService:
         self._cfg = cfg or get_config()
 
     # ------------------------------------------------------------------ 1. validate
-
-    def validate(self, sql: str, database: str = "") -> dict:
-        """Backwards-compatible validation façade."""
-        db = database or self._cfg.mssql_database
-        return self._policy.validate(sql, database=db)
 
     def validate_query(self, sql: str, database: str = "") -> dict:
         """Return validation + intent, agent-envelope friendly."""
@@ -295,25 +283,9 @@ class QueryService:
             "next_action": "done",
         }
 
-    # ------------------------------------------------------------------ legacy
-
-    def run_safe_query(
-        self,
-        sql: str,
-        max_rows: Optional[int] = None,
-    ) -> dict:
-        """Legacy wrapper — preserved for v0.4 clients."""
-        return self.execute_query(
-            sql,
-            max_rows=max_rows,
-            response_mode="rows",
-            affected_rows_policy="report",
-        )
-
 
 __all__ = [
     "QueryService",
-    "QueryExecutionMode",
     "AffectedRowsPolicyMode",
     "sample_row_cap",
     "intent_to_dict",

@@ -177,11 +177,3 @@ async def describe_object(
             error_message=str(e),
         )
         return {"status": "error", "error_message": str(e)}
-
-
-async def trace_dependencies(
-    schema: str, object_name: str, object_type: str,
-    cfg: Optional[Config] = None,
-) -> list[str]:
-    obj = await describe_object(schema, object_name, object_type, cfg)
-    return obj.get("dependencies", []) if obj else []

@@ -193,6 +193,30 @@ async def test_meta_tools_removed_bundle_resource_kept(monkeypatch, tmp_path):
     assert body is not None  # resource still works
 
 
+EXPECTED_TOOLS = {
+    "get_tables", "describe_table", "describe_object",
+    "discover_relevant_tables", "get_table_relationships",
+    "find_join_path", "get_dependency_chain", "plan_or_execute_query",
+    "get_execution_policy", "detect_lookup_tables",
+    "refresh_schema_cache", "tool_metrics",
+}
+
+
+def test_exactly_twelve_tools(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    assert set(_TOOL_REGISTRY.keys()) == EXPECTED_TOOLS
+    assert len(_TOOL_REGISTRY) == 12
+
+
 def test_duplicate_tool_registration_raises(monkeypatch):
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")

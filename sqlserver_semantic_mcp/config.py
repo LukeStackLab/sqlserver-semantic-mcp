@@ -46,6 +46,8 @@ class Config(BaseSettings):
     query_timeout: int = Field(default=30, ge=1)
 
     # ---- Tool surface ----
+    # "all" is the default surface and now resolves to the full consolidated
+    # 12-tool set (see server/tools/__init__.py::_GROUP_REGISTRATIONS).
     tool_profile: str = "all"
 
     # ---- Metrics ----

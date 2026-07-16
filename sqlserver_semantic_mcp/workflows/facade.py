@@ -9,7 +9,6 @@ from ..services.query_service import QueryService
 from .bundle import bundle_context_for_next_step
 from .discovery_flow import discover_relevant_tables
 from .query_flow import plan_or_execute_query
-from .router import route_query
 
 
 class WorkflowFacade:
@@ -26,11 +25,6 @@ class WorkflowFacade:
         self.query = query
 
     # ---- synchronous helpers ------------------------------------------------
-
-    def route_query(self, query: Optional[str]) -> dict:
-        return route_query(
-            query, policy=self.policy, database=self.cfg.mssql_database,
-        ).to_dict()
 
     def plan_or_execute_query(
         self,

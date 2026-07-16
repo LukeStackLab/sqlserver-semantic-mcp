@@ -203,7 +203,10 @@ def test_fix7_truncation_is_precise():
         conn.cursor.return_value = cursor
         mock_open.return_value.__enter__.return_value = conn
 
-        result = qs.run_safe_query("SELECT * FROM T", max_rows=3)
+        result = qs.execute_query(
+            "SELECT * FROM T", max_rows=3,
+            response_mode="rows", affected_rows_policy="report",
+        )
         # fetchmany(limit+1=4) returned only 3 rows → not truncated
         assert result["row_count"] == 3
         assert result["truncated"] is False

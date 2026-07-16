@@ -4,7 +4,6 @@ import pytest
 from sqlserver_semantic_mcp.server.tools.shape import (
     resolve_detail,
     project_describe_table,
-    project_classify,
     project_describe_object,
     DetailError,
 )
@@ -171,19 +170,6 @@ def test_describe_table_brief_important_columns_caps_at_eight():
     # must start with PK, then FK
     assert out["important_columns"][0] == "c1"
     assert out["important_columns"][1] == "c2"
-
-
-# ---------- classify projection ----------
-
-def test_classify_brief_drops_reasons():
-    cls = {"type": "dimension", "confidence": 0.5, "reasons": ["x"]}
-    assert project_classify(cls, "brief") == {"type": "dimension", "confidence": 0.5}
-
-
-def test_classify_standard_and_full_keep_reasons():
-    cls = {"type": "dimension", "confidence": 0.5, "reasons": ["x"]}
-    assert project_classify(cls, "standard") == cls
-    assert project_classify(cls, "full") == cls
 
 
 # ---------- describe_object projection ----------

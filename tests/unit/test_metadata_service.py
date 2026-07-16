@@ -4,7 +4,7 @@ from sqlserver_semantic_mcp.infrastructure.cache.structural import (
     write_structural_snapshot, StructuralSnapshot,
 )
 from sqlserver_semantic_mcp.services.metadata_service import (
-    list_tables, describe_table, list_columns, database_summary,
+    list_tables, describe_table, database_summary,
 )
 
 
@@ -56,16 +56,6 @@ async def test_describe_missing_table(tmp_path):
     db_path = await _setup(tmp_path)
     t = await describe_table(db_path, "testdb", "dbo", "Ghost")
     assert t is None
-
-
-@pytest.mark.asyncio
-async def test_list_columns(tmp_path):
-    db_path = await _setup(tmp_path)
-    cols = await list_columns(db_path, "testdb", "dbo", "Users")
-    assert len(cols) == 2
-    assert cols[0]["column_name"] == "Id"
-    assert "default_value" in cols[0]
-    assert "column_default" not in cols[0]
 
 
 @pytest.mark.asyncio

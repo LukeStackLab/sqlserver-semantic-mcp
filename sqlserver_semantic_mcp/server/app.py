@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _WORKFLOW_TOOLS = frozenset({
     "plan_or_execute_query",
     "discover_relevant_tables",
+    "find_join_path",
 })
 
 

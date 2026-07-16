@@ -122,15 +122,6 @@ def project_describe_table(
     }
 
 
-def project_classify(classification: dict, detail: str) -> dict:
-    if detail == "brief":
-        return {
-            "type": classification.get("type"),
-            "confidence": classification.get("confidence"),
-        }
-    return dict(classification)
-
-
 def project_describe_object(
     obj: dict, detail: str, include_definition: bool,
 ) -> dict:
