@@ -11,7 +11,7 @@
 
 AI Agent 不需要赤裸的 `execute_sql`。它們需要理解 schema 結構、關聯、物件相依性,最重要的是,能在操作者定義的安全邊界內運作。
 
-`sqlserver-semantic-mcp` 透過 29 個 MCP 工具、1 個 concrete MCP 資源與 5 個 MCP resource templates 提供以上能力,底層以雙層 SQLite 快取加速,並以 JSON 格式的 policy 系統保障安全。
+`sqlserver-semantic-mcp` 透過 12 個 MCP 工具、1 個 concrete MCP 資源與 5 個 MCP resource templates 提供以上能力,底層以雙層 SQLite 快取加速,並以 JSON 格式的 policy 系統保障安全。
 
 ---
 
@@ -134,7 +134,7 @@ sqlserver-semantic-mcp
 
 ## 功能特色
 
-- **29 個 MCP 工具**,分佈於 9 個能力群組(metadata、relationship、semantic、object、query、policy、cache、metrics、workflow)
+- **12 個 MCP 工具**,分佈於 9 個能力群組(metadata、relationship、semantic、object、query、policy、cache、metrics、workflow)— 由早期 29 個工具精簡整合而成,被吸收的能力以參數形式保留(詳見 [MCP 工具](#mcp-工具))
 - **雙層 SQLite 快取** — Structural Cache(啟動時預熱)+ Semantic Cache(延遲載入 + 背景填入)
 - **Cache-first 啟動** — 預設重用既有 structural cache,避免每次程序重啟都強制全量預熱
 - **自動結構漂移偵測(L1 schema 探針)** — 節流的純 catalog 指紋探針可偵測欄位型別/長度變更、表的新增/刪除、索引變更與 view/procedure/function 內文修改,並自動刷新快取
@@ -144,7 +144,7 @@ sqlserver-semantic-mcp
 - **語意分類** — 自動識別 fact / dimension / lookup / bridge / audit 表
 - **Join 路徑探索** — 在 FK 圖上以 BFS 找出兩張表之間的關聯路徑
 - **物件檢視** — view / procedure / function 定義與相依追蹤,並拆分 reads / writes
-- **Workflow 快捷工具** — discovery、risk estimation、context bundling、direct execution fast path
+- **Workflow 快捷工具** — 候選表 discovery,以及內建 risk estimation 的 direct execution fast path(`plan_or_execute_query`);context bundling 現在是 MCP 資源而非工具
 - **Payload metrics** — 內建每個工具回應大小量測
 - **優雅降級** — policy 檔遺失或損壞時回退為唯讀;資料庫不可達時亦不會破壞快取
 
@@ -410,19 +410,21 @@ SEMANTIC_MCP_CACHE_PATH=/var/lib/sqlserver-mcp/mydb.db
 
 ## MCP 工具
 
-目前的工具群組:
+工具數量由早期的 29 個精簡整合為 **12 個**,分佈於 9 個能力群組。被移除的單一用途工具都已折入最接近的現存工具,透過參數保留原有能力 — 詳見下表「被吸收的能力」欄。
 
-- `metadata`(3): `get_tables`、`describe_table`、`get_columns`
-- `relationship`(3): `get_table_relationships`、`find_join_path`、`get_dependency_chain`
-- `semantic`(3): `classify_table`、`analyze_columns`、`detect_lookup_tables`
-- `object`(3): `describe_view`、`describe_procedure`、`trace_object_dependencies`
-- `query`(5): `validate_query`、`run_safe_query`、`plan_or_execute_query`、`preview_safe_query`、`estimate_execution_risk`
-- `policy`(3): `get_execution_policy`、`validate_sql_against_policy`、`refresh_policy`
-- `cache`(1): `refresh_schema_cache`
-- `metrics`(2): `get_tool_metrics`、`reset_tool_metrics`
-- `workflow`(6): `discover_relevant_tables`、`suggest_next_tool`、`bundle_context_for_next_step`、`score_join_candidate`、`summarize_table_for_joining`、`summarize_object_for_impact`
+| 群組 | 工具 | 被吸收的能力(透過參數) |
+|---|---|---|
+| `metadata`(2) | `get_tables`、`describe_table` | `describe_table(detail=brief\|standard\|full)` 取代 `get_columns`(完整欄位資訊);每個 detail 層級都內含分類結果,取代 `classify_table`;回應中的 `important_columns` 取代 `summarize_table_for_joining` |
+| `relationship`(3) | `get_table_relationships`、`find_join_path`、`get_dependency_chain` | `find_join_path(score=true)` 取代 `score_join_candidate` |
+| `semantic`(1) | `detect_lookup_tables` | `analyze_columns` 的逐欄語意標記現已併入 `describe_table` 的回應 |
+| `object`(1) | `describe_object` | `describe_object(type=VIEW\|PROCEDURE\|FUNCTION, detail=...)` 取代 `describe_view`、`describe_procedure`、`trace_object_dependencies`、`summarize_object_for_impact` |
+| `query`(1) | `plan_or_execute_query` | `plan_or_execute_query(mode=auto\|validate\|dry_run\|execute_if_safe)` 取代 `validate_query`、`run_safe_query`、`preview_safe_query`、`estimate_execution_risk` |
+| `policy`(1) | `get_execution_policy` | `get_execution_policy(reload=true)` 取代 `refresh_policy`;`plan_or_execute_query(mode="validate")` 取代 `validate_sql_against_policy` |
+| `cache`(1) | `refresh_schema_cache` | — |
+| `metrics`(1) | `tool_metrics` | `tool_metrics(action=get\|reset)` 取代 `get_tool_metrics` / `reset_tool_metrics` |
+| `workflow`(1) | `discover_relevant_tables` | `suggest_next_tool` 已移除 — 每個回應信封都已內含 `next_action` / `recommended_tool`;`bundle_context_for_next_step` 現在是 `semantic://bundle/joining` 這個 MCP **資源**,不再是工具 |
 
-若要降低 prompt 成本,優先使用 workflow tools,再搭配 `detail=\"brief\"` 與帶 filter 的 metadata calls。
+若要降低 prompt 成本,優先使用 `detail=\"brief\"` 與帶 filter 的 metadata calls;不確定的操作先呼叫 `plan_or_execute_query(mode=\"validate\")`。
 
 ---
 
@@ -616,7 +618,7 @@ Structural Cache 可能尚未填入。檢查啟動 log 中的預熱進度。可�
 
 ## 限制 / 未來工作
 
-- SQL 意圖分析器為 regex 基底,非完整 T-SQL parser — CTE 內定義的名稱可能被視為表。若有疑慮,請先使用 `validate_sql_against_policy`。
+- SQL 意圖分析器為 regex 基底,非完整 T-SQL parser — CTE 內定義的名稱可能被視為表。若有疑慮,請先使用 `plan_or_execute_query(mode="validate")`。
 - 索引查詢使用的 `STRING_AGG` 需 SQL Server 2017+。更舊版本需替代查詢。探針對 `nvarchar(max)` 定義使用的 `HASHBYTES` 需 SQL Server 2016+。
 - 探針的欄位/索引 checksum 使用 `CHECKSUM_AGG`/`BINARY_CHECKSUM`,屬 heuristic,理論上存在極微小的碰撞機率。`refresh_schema_cache` 永遠執行完整重抓,不受此影響。
 - 加密模組(`WITH ENCRYPTION`)不暴露定義內文;其探針指紋退回僅用 `modify_date`。

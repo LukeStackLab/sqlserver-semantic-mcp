@@ -5,7 +5,7 @@ from mcp.types import Tool
 from ...services import metadata_service, semantic_service
 from ..app import get_context, register_tool
 from .shape import (
-    project_describe_table, project_get_columns, resolve_detail,
+    project_describe_table, resolve_detail,
 )
 
 
@@ -75,26 +75,6 @@ def register() -> None:
         ),
         _describe_table,
     )
-    register_tool(
-        Tool(
-            name="get_columns",
-            description=(
-                "List columns of a table. detail=brief (default) returns name + "
-                "semantic tag only; standard adds type/nullable; full returns "
-                "all metadata."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schema": {"type": "string"},
-                    "table":  {"type": "string"},
-                    "detail": _DETAIL_PROP,
-                },
-                "required": ["schema", "table"],
-            },
-        ),
-        _get_columns,
-    )
 
 
 def _normalize_schema_filter(raw) -> Optional[list[str]]:
@@ -151,17 +131,3 @@ async def _describe_table(args: dict) -> Optional[dict]:
         full, detail=detail,
         classification=classification, column_semantics=semantic_map,
     )
-
-
-async def _get_columns(args: dict) -> list[dict]:
-    ctx = get_context()
-    detail = resolve_detail(args)
-    cols = await metadata_service.list_columns(
-        ctx.cfg.cache_path, ctx.cfg.mssql_database,
-        args["schema"], args["table"],
-    )
-    semantic_map = {
-        c["column_name"]: (semantic_service._column_semantic(c) or "generic")
-        for c in cols
-    }
-    return project_get_columns(cols, detail=detail, semantic_map=semantic_map)

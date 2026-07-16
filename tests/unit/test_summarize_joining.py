@@ -1,4 +1,4 @@
-"""Tests for summarize_table_for_joining heuristic (P3)."""
+"""Tests for the join-summary heuristic folded into describe_table (P3)."""
 import pytest
 
 

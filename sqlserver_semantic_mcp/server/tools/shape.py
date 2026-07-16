@@ -89,7 +89,8 @@ def project_describe_table(
     # standard: brief + full columns (name/type/nullable) + full FK rows
     standard_cols = [
         {"name": c["column_name"], "type": c.get("data_type"),
-         "is_nullable": bool(c.get("is_nullable"))}
+         "is_nullable": bool(c.get("is_nullable")),
+         "semantic": column_semantics.get(c["column_name"]) or "generic"}
         for c in columns
     ]
     standard: dict[str, Any] = {
@@ -110,6 +111,7 @@ def project_describe_table(
             "max_length": c.get("max_length"),
             "default_value": c.get("default_value"),
             "description": c.get("description"),
+            "semantic": column_semantics.get(c["column_name"]) or "generic",
         })
     return {
         **brief,
@@ -118,46 +120,6 @@ def project_describe_table(
         "indexes": full.get("indexes", []),
         "description": full.get("description"),
     }
-
-
-def project_get_columns(
-    columns: list[dict], detail: str,
-    semantic_map: dict[str, str],
-) -> list[dict]:
-    def semantic_for(name: str) -> str:
-        return semantic_map.get(name) or "generic"
-
-    if detail == "brief":
-        return [
-            {"name": c["column_name"], "semantic": semantic_for(c["column_name"])}
-            for c in columns
-        ]
-    if detail == "standard":
-        return [
-            {"name": c["column_name"], "type": c.get("data_type"),
-             "is_nullable": bool(c.get("is_nullable")),
-             "semantic": semantic_for(c["column_name"])}
-            for c in columns
-        ]
-    # full
-    return [
-        {"name": c["column_name"], "type": c.get("data_type"),
-         "max_length": c.get("max_length"),
-         "is_nullable": bool(c.get("is_nullable")),
-         "default_value": c.get("default_value"),
-         "description": c.get("description"),
-         "semantic": semantic_for(c["column_name"])}
-        for c in columns
-    ]
-
-
-def project_classify(classification: dict, detail: str) -> dict:
-    if detail == "brief":
-        return {
-            "type": classification.get("type"),
-            "confidence": classification.get("confidence"),
-        }
-    return dict(classification)
 
 
 def project_describe_object(

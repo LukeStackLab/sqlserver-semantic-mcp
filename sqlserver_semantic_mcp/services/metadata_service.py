@@ -62,14 +62,6 @@ async def list_tables(
         return [dict(r) for r in await cur.fetchall()]
 
 
-async def list_columns(
-    db_path: str, database: str, schema: str, table: str,
-) -> list[dict]:
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-        return await _list_columns_from_db(db, database, schema, table)
-
-
 async def describe_table(
     db_path: str, database: str, schema: str, table: str,
 ) -> Optional[dict]:

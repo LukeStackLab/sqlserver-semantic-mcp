@@ -4,8 +4,6 @@ import pytest
 from sqlserver_semantic_mcp.server.tools.shape import (
     resolve_detail,
     project_describe_table,
-    project_get_columns,
-    project_classify,
     project_describe_object,
     DetailError,
 )
@@ -92,10 +90,10 @@ def test_describe_table_standard_shape():
     assert out["pk"] == ["Id"]
     assert out["fk_to"] == ["dbo.Org"]
     assert len(out["columns"]) == 6
-    # standard columns are name+type+nullable only
+    # standard columns are name+type+nullable+semantic
     c0 = out["columns"][0]
-    assert set(c0.keys()) == {"name", "type", "is_nullable"}
-    assert c0 == {"name": "Id", "type": "int", "is_nullable": False}
+    assert set(c0.keys()) == {"name", "type", "is_nullable", "semantic"}
+    assert c0 == {"name": "Id", "type": "int", "is_nullable": False, "semantic": "generic"}
     # full FKs
     assert out["foreign_keys"][0]["column_name"] == "OrgId"
     # standard excludes indexes/description
@@ -112,6 +110,38 @@ def test_describe_table_full_shape_includes_everything():
     assert "indexes" in out
     assert out["columns"][2]["description"] == "login email"
     assert out["columns"][4]["default_value"] == "getdate()"
+
+
+def _full_fixture():
+    return {
+        "schema_name": "dbo", "table_name": "Orders",
+        "columns": [
+            {"column_name": "Id", "data_type": "int", "is_nullable": False},
+            {"column_name": "Status", "data_type": "char", "is_nullable": False},
+        ],
+        "primary_key": ["Id"], "foreign_keys": [], "indexes": [],
+    }
+
+
+def test_describe_table_standard_includes_column_semantic():
+    out = project_describe_table(
+        _full_fixture(), detail="standard",
+        classification={"type": "fact"},
+        column_semantics={"Id": "generic", "Status": "status"},
+    )
+    by_name = {c["name"]: c for c in out["columns"]}
+    assert by_name["Status"]["semantic"] == "status"
+    assert by_name["Id"]["semantic"] == "generic"
+
+
+def test_describe_table_full_includes_column_semantic():
+    out = project_describe_table(
+        _full_fixture(), detail="full",
+        classification={"type": "fact"},
+        column_semantics={"Id": "generic", "Status": "status"},
+    )
+    by_name = {c["name"]: c for c in out["columns"]}
+    assert by_name["Status"]["semantic"] == "status"
 
 
 def test_describe_table_brief_important_columns_caps_at_eight():
@@ -140,57 +170,6 @@ def test_describe_table_brief_important_columns_caps_at_eight():
     # must start with PK, then FK
     assert out["important_columns"][0] == "c1"
     assert out["important_columns"][1] == "c2"
-
-
-# ---------- get_columns projection ----------
-
-_FULL_COLS = [
-    {"column_name": "Id", "data_type": "int", "is_nullable": False,
-     "default_value": None, "description": None, "max_length": 4,
-     "ordinal_position": 1},
-    {"column_name": "CreatedAt", "data_type": "datetime", "is_nullable": False,
-     "default_value": None, "description": None, "max_length": 8,
-     "ordinal_position": 2},
-]
-
-
-def test_get_columns_brief_shape():
-    out = project_get_columns(_FULL_COLS, detail="brief",
-                              semantic_map={"CreatedAt": "audit_timestamp"})
-    assert out == [
-        {"name": "Id", "semantic": "generic"},
-        {"name": "CreatedAt", "semantic": "audit_timestamp"},
-    ]
-
-
-def test_get_columns_standard_shape():
-    out = project_get_columns(_FULL_COLS, detail="standard",
-                              semantic_map={})
-    assert out[0] == {"name": "Id", "type": "int",
-                      "is_nullable": False, "semantic": "generic"}
-
-
-def test_get_columns_full_shape():
-    out = project_get_columns(_FULL_COLS, detail="full",
-                              semantic_map={"CreatedAt": "audit_timestamp"})
-    assert out[1] == {
-        "name": "CreatedAt", "type": "datetime", "max_length": 8,
-        "is_nullable": False, "default_value": None, "description": None,
-        "semantic": "audit_timestamp",
-    }
-
-
-# ---------- classify projection ----------
-
-def test_classify_brief_drops_reasons():
-    cls = {"type": "dimension", "confidence": 0.5, "reasons": ["x"]}
-    assert project_classify(cls, "brief") == {"type": "dimension", "confidence": 0.5}
-
-
-def test_classify_standard_and_full_keep_reasons():
-    cls = {"type": "dimension", "confidence": 0.5, "reasons": ["x"]}
-    assert project_classify(cls, "standard") == cls
-    assert project_classify(cls, "full") == cls
 
 
 # ---------- describe_object projection ----------

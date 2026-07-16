@@ -1,5 +1,4 @@
 import hashlib
-from typing import Any
 
 from mcp.types import Tool
 
@@ -7,58 +6,21 @@ from ...services import object_service
 from ..app import get_context, register_tool
 from .shape import project_describe_object, resolve_detail
 
-
 _DETAIL_PROP = {
-    "type": "string", "enum": ["brief", "standard", "full"],
-    "default": "brief",
-    "description": "Response verbosity. brief strips definition; full always "
-                   "includes it. include_definition overrides to include at "
-                   "brief/standard tiers.",
+    "type": "string", "enum": ["brief", "standard", "full"], "default": "brief",
+    "description": "brief=depends_on only; standard=+reads/writes/impact; "
+                   "full=+definition.",
 }
-
-
-def _input_schema() -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            "schema":             {"type": "string"},
-            "name":               {"type": "string"},
-            "detail":             _DETAIL_PROP,
-            "include_definition": {"type": "boolean", "default": False},
-        },
-        "required": ["schema", "name"],
-    }
 
 
 def register() -> None:
     register_tool(
         Tool(
-            name="describe_view",
+            name="describe_object",
             description=(
-                "Return view metadata + dependencies. detail=brief (default) "
-                "strips SQL definition; detail=full or include_definition=true "
-                "returns the full text."
+                "Describe a VIEW / PROCEDURE / FUNCTION: dependencies, "
+                "reads/writes, and (at full detail) its definition."
             ),
-            inputSchema=_input_schema(),
-        ),
-        _describe_view,
-    )
-    register_tool(
-        Tool(
-            name="describe_procedure",
-            description=(
-                "Return procedure metadata + dependencies. detail=brief (default) "
-                "strips SQL definition; detail=full or include_definition=true "
-                "returns the full text."
-            ),
-            inputSchema=_input_schema(),
-        ),
-        _describe_procedure,
-    )
-    register_tool(
-        Tool(
-            name="trace_object_dependencies",
-            description="Return a list of objects/tables the given object depends on.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -66,11 +28,13 @@ def register() -> None:
                     "name":   {"type": "string"},
                     "type":   {"type": "string",
                                "enum": ["VIEW", "PROCEDURE", "FUNCTION"]},
+                    "detail": _DETAIL_PROP,
+                    "include_definition": {"type": "boolean", "default": False},
                 },
                 "required": ["schema", "name", "type"],
             },
         ),
-        _trace,
+        _describe_object_tool,
     )
 
 
@@ -98,16 +62,5 @@ async def _describe_object(args: dict, object_type: str) -> dict:
     return project_describe_object(obj, detail=detail, include_definition=include)
 
 
-async def _describe_view(args: dict) -> dict:
-    return await _describe_object(args, "VIEW")
-
-
-async def _describe_procedure(args: dict) -> dict:
-    return await _describe_object(args, "PROCEDURE")
-
-
-async def _trace(args: dict) -> list[str]:
-    ctx = get_context()
-    return await object_service.trace_dependencies(
-        args["schema"], args["name"], args["type"], ctx.cfg,
-    )
+async def _describe_object_tool(args: dict) -> dict:
+    return await _describe_object(args, args["type"])

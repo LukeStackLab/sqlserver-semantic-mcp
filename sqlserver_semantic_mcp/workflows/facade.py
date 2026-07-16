@@ -9,8 +9,6 @@ from ..services.query_service import QueryService
 from .bundle import bundle_context_for_next_step
 from .discovery_flow import discover_relevant_tables
 from .query_flow import plan_or_execute_query
-from .recommendations import estimate_execution_risk, suggest_next_tool
-from .router import route_query
 
 
 class WorkflowFacade:
@@ -27,11 +25,6 @@ class WorkflowFacade:
         self.query = query
 
     # ---- synchronous helpers ------------------------------------------------
-
-    def route_query(self, query: Optional[str]) -> dict:
-        return route_query(
-            query, policy=self.policy, database=self.cfg.mssql_database,
-        ).to_dict()
 
     def plan_or_execute_query(
         self,
@@ -55,34 +48,6 @@ class WorkflowFacade:
             token_budget_hint=token_budget_hint,
             affected_rows_policy=affected_rows_policy,
             cfg=self.cfg,
-        )
-
-    def preview_safe_query(
-        self,
-        query: str,
-        *,
-        max_rows: Optional[int] = None,
-    ) -> dict:
-        preview = self.query.preview_query(
-            query, max_rows=max_rows, database=self.cfg.mssql_database,
-        )
-        return {
-            "kind": "preview_safe_query",
-            "detail": "brief",
-            "next_action": preview["next_action"],
-            "recommended_tool": (
-                "plan_or_execute_query" if preview["allowed"]
-                else "validate_query"
-            ),
-            "data": preview,
-        }
-
-    def suggest_next_tool(self, **kwargs) -> dict:
-        return suggest_next_tool(policy=self.policy, cfg=self.cfg, **kwargs)
-
-    def estimate_execution_risk(self, query: str) -> dict:
-        return estimate_execution_risk(
-            query, policy=self.policy, cfg=self.cfg,
         )
 
     # ---- async helpers ------------------------------------------------------

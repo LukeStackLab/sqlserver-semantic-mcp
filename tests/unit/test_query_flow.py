@@ -23,18 +23,52 @@ def ctx(monkeypatch):
     return {"cfg": cfg, "policy": policy, "query": query}
 
 
-def test_validate_only_mode(ctx):
+def test_validate_mode(ctx):
     env = plan_or_execute_query(
         "SELECT * FROM dbo.T",
         policy=ctx["policy"],
         query_service=ctx["query"],
-        mode="validate_only",
+        mode="validate",
         cfg=ctx["cfg"],
     )
     assert env["kind"] == "plan_or_execute_query"
     assert env["data"]["path"] == "direct_validate"
     assert env["data"]["executed"] is False
     assert env["data"]["allowed"] is True
+
+
+def test_validate_mode_includes_risk(ctx):
+    env = plan_or_execute_query(
+        "SELECT * FROM dbo.BigTable",
+        policy=ctx["policy"],
+        query_service=ctx["query"],
+        mode="validate",
+        cfg=ctx["cfg"],
+    )
+    d = env["data"]
+    assert d["path"] == "direct_validate"
+    assert d["risk_level"] == "medium"
+    assert any(r["kind"] == "payload_risk" for r in d["risks"])
+
+
+@patch("sqlserver_semantic_mcp.services.query_service.open_connection")
+def test_validate_only_alias_removed(mock_open, ctx):
+    # Old mode name no longer short-circuits — falls through to auto routing.
+    conn = MagicMock()
+    cursor = MagicMock()
+    cursor.description = [("id",)]
+    cursor.fetchmany.return_value = [(1,)]
+    conn.cursor.return_value = cursor
+    mock_open.return_value.__enter__.return_value = conn
+
+    env = plan_or_execute_query(
+        "SELECT 1",
+        policy=ctx["policy"],
+        query_service=ctx["query"],
+        mode="validate_only",
+        cfg=ctx["cfg"],
+    )
+    assert env["data"].get("path") != "direct_validate"
 
 
 def test_disallowed_query_returns_validate_envelope(ctx):

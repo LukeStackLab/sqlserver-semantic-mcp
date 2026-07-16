@@ -115,7 +115,7 @@ async def bundle_context_for_next_step(
             kind="bundle_context_for_next_step",
             detail=detail,
             next_action="find_or_score_join",
-            recommended_tool="score_join_candidate",
+            recommended_tool="find_join_path",
             bundle_key="joining",
             data={
                 "bundle_type": "joining",
@@ -137,7 +137,7 @@ async def bundle_context_for_next_step(
             kind="bundle_context_for_next_step",
             detail=detail,
             next_action="trace_impact",
-            recommended_tool="trace_object_dependencies",
+            recommended_tool="describe_object",
             bundle_key="object_impact",
             data={
                 "bundle_type": "object_impact",

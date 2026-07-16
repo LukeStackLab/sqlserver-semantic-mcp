@@ -123,18 +123,17 @@ SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword \
 
 ## 🛠 殺手級特性與工具箱
 
-**29 個 MCP 工具**,分為三大核心模組——每一個都為「讓 AI 少走彎路」而生:
+**12 個 MCP 工具**(由早期 29 個精簡整合而成,能力不減、token 更省),分為三大核心模組——每一個都為「讓 AI 少走彎路」而生:
 
 ### 🧭 1. 探索與語意模組 —— 讓 AI 真正「看懂」資料庫
 
 | 工具 | 它為你做什麼 |
 |---|---|
 | 🔍 `discover_relevant_tables` | 用自然語言關鍵字直達相關資料表,告別人肉翻 schema |
-| 🧬 `classify_table` | 自動判定 Fact / Dimension / Lookup / Bridge / Audit,AI 秒懂這張表的角色 |
-| 🗺 `find_join_path` | **BFS 走訪外鍵圖**,自動算出兩張表之間的最短 Join 鏈——不再瞎猜 |
-| 🤝 `summarize_table_for_joining` | 一次打包主鍵、Join 候選欄、常用篩選欄,為撰寫查詢量身整理 |
+| 🧬 `describe_table`(`detail`) | 回傳欄位、主鍵、FK,並**自動判定 Fact / Dimension / Lookup / Bridge / Audit** 角色;`detail=brief` 就內含分類與 Join/篩選重點欄位,`standard` / `full` 依需要升級到完整欄位與索引 |
+| 🗺 `find_join_path`(`score`) | **BFS 走訪外鍵圖**,自動算出兩張表之間的最短 Join 鏈;`score=true` 再附上信心分數,排除 Bridge / Audit / Lookup 干擾——不再瞎猜 |
 | 🪜 `get_dependency_chain` | 沿外鍵展開整條相依鏈,影響分析一目了然 |
-| 📜 `describe_view` / `describe_procedure` | 檢視表與預存程序的定義、相依物件、讀寫拆解(哪些表被讀、哪些被寫) |
+| 📜 `describe_object`(`detail`) | 檢視表 / 預存程序 / 函式的定義、相依物件、讀寫拆解(哪些表被讀、哪些被寫);`detail=full` 才附上完整定義文字 |
 
 ### 🚀 2. 效能與快取模組 —— 毫秒級回應,線上 DB 零負擔
 
@@ -143,18 +142,16 @@ SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword \
 | ⚡ **雙層 SQLite 快取**(內建) | 結構快取 + 語意快取全部本地持久化,重啟免重抓(cache-first 啟動) |
 | 📡 **L1 Catalog 指紋探針**(內建、全自動) | 純 catalog 查詢、毫秒級偵測 schema 漂移——欄位型別、長度、索引、檢視表內文變更全部捕捉,**只刷新真正變動的表** |
 | 🔄 `refresh_schema_cache` | 一鍵強制全量刷新,語意分析自動連鎖重算 |
-| 📦 `bundle_context_for_next_step` | 把下一步需要的上下文一次打包,**大幅節省 token** |
-| 📊 `get_tool_metrics` | 內建每個工具的回應大小量測,token 成本看得見 |
+| 📊 `tool_metrics`(`action`) | `action=get` 內建每個工具的回應大小量測,token 成本看得見;`action=reset` 一鍵清空歷史紀錄 |
+
+> 💡 下一步所需的上下文打包(原 `bundle_context_for_next_step`)現在是 MCP **Resource**——讀取 `semantic://bundle/joining/{schema}.{table}` 即可,不再需要額外呼叫工具。
 
 ### 🛡 3. 安全與執行防護模組 —— DBA 敢簽核的 AI 工具
 
 | 工具 | 它為你做什麼 |
 |---|---|
-| 🚦 `plan_or_execute_query` | 智慧路由:安全的查詢直接執行,危險的自動轉入計畫與確認流程 |
-| 🕵️ `validate_sql_against_policy` | 執行前先驗證:操作權限、`WHERE` 強制、列數上限——任何一關不過就攔下 |
-| ⚖️ `estimate_execution_risk` | 量化這句 SQL 的風險等級,先看清楚再動手 |
-| 👀 `preview_safe_query` | 不動資料、先看執行計畫與樣本,安心預演 |
-| ✅ `run_safe_query` | 政策閘門背書下的查詢執行,row cap 與 timeout 全程護航 |
+| 🚦 `plan_or_execute_query`(`mode`) | 智慧路由:`mode=auto` 安全的查詢直接執行、危險的自動轉入驗證;`mode=validate` 只驗證並回傳風險等級與原因;`mode=dry_run` 先看執行計畫與樣本、完全不動資料 |
+| 🔐 `get_execution_policy`(`reload`) | 查看目前生效的執行政策:操作權限、`WHERE` 強制、列數上限;`reload=true` 立即重新載入 policy 檔案 |
 
 ---
 
@@ -232,7 +229,7 @@ AI Agent (Claude / Cursor / Codex)
 
 | 文件 | 內容 |
 |---|---|
-| 📖 [README.en.md](./README.en.md) | 完整英文技術文件:架構、29 個工具全覽、環境變數、部署、疑難排解 |
+| 📖 [README.en.md](./README.en.md) | 完整英文技術文件:架構、12 個工具全覽、環境變數、部署、疑難排解 |
 | 📖 [README.zh-TW.md](./README.zh-TW.md) | 完整繁體中文技術文件 |
 | 🛡 [config/policy.example.json](./config/policy.example.json) | 三段式權限 Policy 範本(readonly / read_write_safe / admin) |
 
