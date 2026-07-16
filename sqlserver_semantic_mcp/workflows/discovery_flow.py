@@ -55,8 +55,9 @@ async def discover_relevant_tables(
     """Return a small ranked candidate set for a natural-language ask.
 
     The server intentionally stays dumb (keyword scoring only) so the
-    response is cheap. Agents can follow up with ``describe_table`` or
-    ``classify_table`` for the short list.
+    response is cheap. Agents can follow up with ``describe_table`` (which
+    includes classification at "brief" detail) for the short list, or pass
+    ``classify=True`` here to attach classification inline.
     """
     cfg = cfg or get_config()
     db_path = cfg.cache_path

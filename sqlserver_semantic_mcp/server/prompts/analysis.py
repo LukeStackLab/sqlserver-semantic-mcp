@@ -28,11 +28,10 @@ _PROMPT = Prompt(
 
 _BODY = """You need to understand the impact of modifying {type} {schema}.{name}. Follow the impact chain:
 
-1. `summarize_object_for_impact(schema={schema!r}, name={name!r}, type={type!r})` — returns reads / writes / depends_on in compact form.
-2. `trace_object_dependencies(schema={schema!r}, name={name!r}, type={type!r})` — returns the dependency list.
-3. `bundle_context_for_next_step(items=[...], goal="object_impact")` — compress before recommending changes.
+1. `describe_object(schema={schema!r}, name={name!r}, type={type!r}, detail="standard")` — returns reads / writes / depends_on in compact form.
+2. For a cheaper repeat look, read the `semantic://summary/object/{type}/{schema}.{name}` resource instead of re-calling the tool.
 
-Only request full definitions (`describe_view` / `describe_procedure` with detail="full") if the summaries leave a concrete gap.
+Only request the full definition (`describe_object(schema={schema!r}, name={name!r}, type={type!r}, detail="full")`) if the summary leaves a concrete gap.
 """
 
 

@@ -35,7 +35,7 @@ _BODY = """You have a SQL query already drafted. Prefer the shortest safe path:
 2. If the response has `path="direct_execute"` and `executed=true`, you are done — present the rows / summary as-is.
 3. If the response has `path="direct_validate"` and `allowed=false`, read `reason` and either:
    - revise the SQL, or
-   - call `estimate_execution_risk` for more detail before revising.
+   - call `plan_or_execute_query` with mode="validate" for a fuller risk breakdown before revising.
 4. Do NOT call `get_tables` / `describe_table` / `find_join_path` first when the SQL is already known — that only wastes tokens.
 
 Query:

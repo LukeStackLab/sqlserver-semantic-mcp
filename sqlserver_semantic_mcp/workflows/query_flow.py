@@ -122,7 +122,7 @@ def plan_or_execute_query(
 
 
 def _assess_risk(intent, policy):
-    """Port of ``recommendations.estimate_execution_risk``'s risk accumulation.
+    """Risk accumulation backing ``plan_or_execute_query(mode="validate")``.
 
     Returns a concise ``(level, risks_list)`` pair — callers that already have
     the full intent/payload should not need the intent re-serialized here.

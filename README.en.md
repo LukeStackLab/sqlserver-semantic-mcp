@@ -11,7 +11,7 @@
 
 AI agents don't need raw `execute_sql`. They need to understand schema structure, relationships, object dependencies, and — most importantly — to operate inside a safety boundary that an operator can define.
 
-`sqlserver-semantic-mcp` provides all of this through 29 MCP tools, 1 concrete MCP resource, and 5 MCP resource templates, backed by a two-tier SQLite cache for speed and a JSON-based policy system for safety.
+`sqlserver-semantic-mcp` provides all of this through 12 MCP tools, 1 concrete MCP resource, and 5 MCP resource templates, backed by a two-tier SQLite cache for speed and a JSON-based policy system for safety.
 
 ---
 
@@ -142,7 +142,7 @@ See the full env-var matrix in [Configuration](#configuration).
 
 ## Features
 
-- **29 MCP tools** across 9 capability groups (metadata, relationship, semantic, object, query, policy, cache, metrics, workflow)
+- **12 MCP tools** across 9 capability groups (metadata, relationship, semantic, object, query, policy, cache, metrics, workflow) — consolidated from an earlier 29-tool surface; absorbed capabilities live on as parameters (see [MCP Tools](#mcp-tools))
 - **Two-tier SQLite cache** — Structural Cache (warm on startup) + Semantic Cache (lazy + background fill)
 - **Cache-first startup** — reuse existing structural cache by default and avoid mandatory full warmup on every process start
 - **Automatic drift detection (L1 schema probe)** — a throttled, catalog-only fingerprint probe detects column type/length changes, new/dropped tables, index changes, and view/procedure/function body edits, then refreshes the cache automatically
@@ -152,7 +152,7 @@ See the full env-var matrix in [Configuration](#configuration).
 - **Semantic classification** — automatic detection of fact / dimension / lookup / bridge / audit tables
 - **Join path discovery** — BFS over the FK graph to find how two tables relate
 - **Object inspection** — view / procedure / function definitions with dependency tracing plus read/write split
-- **Workflow shortcuts** — discovery, risk estimation, context bundling, and direct execution fast-path tools
+- **Workflow shortcuts** — candidate-table discovery plus a direct-execution fast path (`plan_or_execute_query`) that folds in risk estimation; context bundling is now an MCP resource rather than a tool
 - **Payload metrics** — built-in measurement for per-tool response size
 - **Graceful degradation** — missing or malformed policy file falls back to read-only; unreachable DB doesn't corrupt cache
 
@@ -439,19 +439,21 @@ To enable writes or change any constraint, create a policy JSON file and point `
 
 ## MCP Tools
 
-Current tool groups:
+The surface was consolidated from an earlier 29-tool set down to **12 tools** across 9 capability groups. Removed single-purpose tools were folded into the closest surviving tool via a parameter — see "Absorbed capability" below.
 
-- `metadata` (3): `get_tables`, `describe_table`, `get_columns`
-- `relationship` (3): `get_table_relationships`, `find_join_path`, `get_dependency_chain`
-- `semantic` (3): `classify_table`, `analyze_columns`, `detect_lookup_tables`
-- `object` (3): `describe_view`, `describe_procedure`, `trace_object_dependencies`
-- `query` (5): `validate_query`, `run_safe_query`, `plan_or_execute_query`, `preview_safe_query`, `estimate_execution_risk`
-- `policy` (3): `get_execution_policy`, `validate_sql_against_policy`, `refresh_policy`
-- `cache` (1): `refresh_schema_cache`
-- `metrics` (2): `get_tool_metrics`, `reset_tool_metrics`
-- `workflow` (6): `discover_relevant_tables`, `suggest_next_tool`, `bundle_context_for_next_step`, `score_join_candidate`, `summarize_table_for_joining`, `summarize_object_for_impact`
+| Group | Tool(s) | Absorbed capability (via parameter) |
+|---|---|---|
+| `metadata` (2) | `get_tables`, `describe_table` | `describe_table(detail=brief\|standard\|full)` replaces `get_columns` (full column detail); classification is included at every tier, replacing `classify_table`; `important_columns` in the response replaces `summarize_table_for_joining` |
+| `relationship` (3) | `get_table_relationships`, `find_join_path`, `get_dependency_chain` | `find_join_path(score=true)` replaces `score_join_candidate` |
+| `semantic` (1) | `detect_lookup_tables` | `analyze_columns`' per-column semantic tagging now surfaces through `describe_table` |
+| `object` (1) | `describe_object` | `describe_object(type=VIEW\|PROCEDURE\|FUNCTION, detail=...)` replaces `describe_view`, `describe_procedure`, `trace_object_dependencies`, and `summarize_object_for_impact` |
+| `query` (1) | `plan_or_execute_query` | `plan_or_execute_query(mode=auto\|validate\|dry_run\|execute_if_safe)` replaces `validate_query`, `run_safe_query`, `preview_safe_query`, and `estimate_execution_risk` |
+| `policy` (1) | `get_execution_policy` | `get_execution_policy(reload=true)` replaces `refresh_policy`; `plan_or_execute_query(mode="validate")` replaces `validate_sql_against_policy` |
+| `cache` (1) | `refresh_schema_cache` | — |
+| `metrics` (1) | `tool_metrics` | `tool_metrics(action=get\|reset)` replaces `get_tool_metrics` / `reset_tool_metrics` |
+| `workflow` (1) | `discover_relevant_tables` | `suggest_next_tool` was dropped — every response envelope already carries `next_action` / `recommended_tool`; `bundle_context_for_next_step` lives on as the `semantic://bundle/joining` MCP **resource**, not a tool |
 
-For smaller prompts and faster discovery, prefer the workflow tools plus `detail="brief"` and filtered metadata calls.
+For smaller prompts and faster discovery, prefer `detail="brief"` and filtered metadata calls, and call `plan_or_execute_query(mode="validate")` before executing anything you're unsure about.
 
 ---
 
@@ -645,7 +647,7 @@ The Structural Cache may not have been populated yet. Check the startup logs for
 
 ## Limitations / Future Work
 
-- SQL intent analyzer is regex-based, not a full T-SQL parser — CTE-defined names may appear as tables. Use `validate_sql_against_policy` first when in doubt.
+- SQL intent analyzer is regex-based, not a full T-SQL parser — CTE-defined names may appear as tables. Use `plan_or_execute_query(mode="validate")` first when in doubt.
 - `STRING_AGG` used in the index query requires SQL Server 2017+. Older versions will need an alternative query. The schema probe's `HASHBYTES` over `nvarchar(max)` definitions requires SQL Server 2016+.
 - The probe's column/index checksums use `CHECKSUM_AGG`/`BINARY_CHECKSUM` — a heuristic with a theoretical (astronomically small) collision chance. `refresh_schema_cache` always performs a full re-fetch regardless.
 - Encrypted modules (`WITH ENCRYPTION`) expose no definition; their probe fingerprint falls back to `modify_date` only.
