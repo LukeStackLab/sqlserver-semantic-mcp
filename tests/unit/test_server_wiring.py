@@ -63,6 +63,22 @@ def test_classify_and_analyze_tools_removed(monkeypatch):
     assert "detect_lookup_tables" in names
 
 
+def test_summarize_table_tool_removed(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    names = set(_TOOL_REGISTRY.keys())
+    assert "summarize_table_for_joining" not in names
+    assert "describe_table" in names
+
+
 def test_duplicate_tool_registration_raises(monkeypatch):
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")

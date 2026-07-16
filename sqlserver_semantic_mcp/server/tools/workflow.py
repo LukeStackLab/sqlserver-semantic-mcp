@@ -1,8 +1,6 @@
 """Workflow-layer MCP tools (v0.5)."""
 from __future__ import annotations
 
-from typing import Any
-
 from mcp.types import Tool
 
 from ...services import relationship_service, semantic_service, object_service
@@ -106,24 +104,6 @@ def register() -> None:
             },
         ),
         _score_join,
-    )
-    register_tool(
-        Tool(
-            name="summarize_table_for_joining",
-            description=(
-                "Return a compact join-ready summary for a single table — "
-                "classification, PK, important columns, FK edges."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "schema": {"type": "string"},
-                    "table":  {"type": "string"},
-                },
-                "required": ["schema", "table"],
-            },
-        ),
-        _summarize_table,
     )
     register_tool(
         Tool(
@@ -249,29 +229,6 @@ async def _score_join(args: dict) -> dict:
             "path": path,
             "penalties": penalties,
         },
-    }
-
-
-async def _summarize_table(args: dict) -> Any:
-    ctx = get_context()
-    summary = await semantic_service.summarize_for_joining(
-        ctx.cfg.cache_path, ctx.cfg.mssql_database,
-        args["schema"], args["table"],
-    )
-    if summary is None:
-        return {
-            "kind": "summarize_table_for_joining",
-            "detail": "brief",
-            "next_action": "broaden_search",
-            "recommended_tool": "get_tables",
-            "data": {"error": "table not found"},
-        }
-    return {
-        "kind": "summarize_table_for_joining",
-        "detail": "brief",
-        "next_action": "find_or_score_join",
-        "recommended_tool": "find_join_path",
-        "data": summary,
     }
 
 
