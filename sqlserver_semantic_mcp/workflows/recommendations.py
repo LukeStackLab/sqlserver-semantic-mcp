@@ -48,7 +48,7 @@ def suggest_next_tool(
     recommended: list[str] = []
     next_action: str
     if have_object:
-        recommended = ["trace_object_dependencies", "bundle_context_for_next_step"]
+        recommended = ["describe_object", "bundle_context_for_next_step"]
         next_action = "trace_impact"
         rationale.append("object context available — trace its dependencies")
     elif have_join_path:
