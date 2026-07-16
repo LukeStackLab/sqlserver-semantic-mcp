@@ -92,10 +92,10 @@ def test_describe_table_standard_shape():
     assert out["pk"] == ["Id"]
     assert out["fk_to"] == ["dbo.Org"]
     assert len(out["columns"]) == 6
-    # standard columns are name+type+nullable only
+    # standard columns are name+type+nullable+semantic
     c0 = out["columns"][0]
-    assert set(c0.keys()) == {"name", "type", "is_nullable"}
-    assert c0 == {"name": "Id", "type": "int", "is_nullable": False}
+    assert set(c0.keys()) == {"name", "type", "is_nullable", "semantic"}
+    assert c0 == {"name": "Id", "type": "int", "is_nullable": False, "semantic": "generic"}
     # full FKs
     assert out["foreign_keys"][0]["column_name"] == "OrgId"
     # standard excludes indexes/description
@@ -112,6 +112,38 @@ def test_describe_table_full_shape_includes_everything():
     assert "indexes" in out
     assert out["columns"][2]["description"] == "login email"
     assert out["columns"][4]["default_value"] == "getdate()"
+
+
+def _full_fixture():
+    return {
+        "schema_name": "dbo", "table_name": "Orders",
+        "columns": [
+            {"column_name": "Id", "data_type": "int", "is_nullable": False},
+            {"column_name": "Status", "data_type": "char", "is_nullable": False},
+        ],
+        "primary_key": ["Id"], "foreign_keys": [], "indexes": [],
+    }
+
+
+def test_describe_table_standard_includes_column_semantic():
+    out = project_describe_table(
+        _full_fixture(), detail="standard",
+        classification={"type": "fact"},
+        column_semantics={"Id": "generic", "Status": "status"},
+    )
+    by_name = {c["name"]: c for c in out["columns"]}
+    assert by_name["Status"]["semantic"] == "status"
+    assert by_name["Id"]["semantic"] == "generic"
+
+
+def test_describe_table_full_includes_column_semantic():
+    out = project_describe_table(
+        _full_fixture(), detail="full",
+        classification={"type": "fact"},
+        column_semantics={"Id": "generic", "Status": "status"},
+    )
+    by_name = {c["name"]: c for c in out["columns"]}
+    assert by_name["Status"]["semantic"] == "status"
 
 
 def test_describe_table_brief_important_columns_caps_at_eight():

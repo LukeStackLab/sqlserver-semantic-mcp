@@ -89,7 +89,8 @@ def project_describe_table(
     # standard: brief + full columns (name/type/nullable) + full FK rows
     standard_cols = [
         {"name": c["column_name"], "type": c.get("data_type"),
-         "is_nullable": bool(c.get("is_nullable"))}
+         "is_nullable": bool(c.get("is_nullable")),
+         "semantic": column_semantics.get(c["column_name"]) or "generic"}
         for c in columns
     ]
     standard: dict[str, Any] = {
@@ -110,6 +111,7 @@ def project_describe_table(
             "max_length": c.get("max_length"),
             "default_value": c.get("default_value"),
             "description": c.get("description"),
+            "semantic": column_semantics.get(c["column_name"]) or "generic",
         })
     return {
         **brief,
