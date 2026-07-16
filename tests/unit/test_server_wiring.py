@@ -165,6 +165,34 @@ def test_metrics_tools_consolidated(monkeypatch):
         assert gone not in names
 
 
+async def test_meta_tools_removed_bundle_resource_kept(monkeypatch, tmp_path):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    monkeypatch.setenv("SEMANTIC_MCP_CACHE_PATH", str(tmp_path / "wiring.db"))
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY, reset_context
+    reset_context()
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    names = set(_TOOL_REGISTRY.keys())
+    assert "suggest_next_tool" not in names
+    assert "bundle_context_for_next_step" not in names
+
+    from sqlserver_semantic_mcp.infrastructure.cache.store import init_store
+    from sqlserver_semantic_mcp.config import get_config
+    await init_store(get_config().cache_path)
+
+    from sqlserver_semantic_mcp.server.resources import schema as res
+    from pydantic import AnyUrl
+    body = await res.read_resource(
+        AnyUrl("semantic://bundle/joining/dbo.Orders"))
+    assert body is not None  # resource still works
+
+
 def test_duplicate_tool_registration_raises(monkeypatch):
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
     monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")

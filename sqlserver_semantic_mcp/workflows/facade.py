@@ -9,7 +9,6 @@ from ..services.query_service import QueryService
 from .bundle import bundle_context_for_next_step
 from .discovery_flow import discover_relevant_tables
 from .query_flow import plan_or_execute_query
-from .recommendations import suggest_next_tool
 from .router import route_query
 
 
@@ -56,9 +55,6 @@ class WorkflowFacade:
             affected_rows_policy=affected_rows_policy,
             cfg=self.cfg,
         )
-
-    def suggest_next_tool(self, **kwargs) -> dict:
-        return suggest_next_tool(policy=self.policy, cfg=self.cfg, **kwargs)
 
     # ---- async helpers ------------------------------------------------------
 
