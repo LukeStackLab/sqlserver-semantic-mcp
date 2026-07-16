@@ -48,12 +48,12 @@ def route_query(
         return RouteDecision(
             route="direct_execute",
             reason="policy allows direct execution",
-            recommended_tools=["plan_or_execute_query", "run_safe_query"],
+            recommended_tools=["plan_or_execute_query"],
             confidence=intent.confidence,
         )
     return RouteDecision(
         route="direct_validate",
         reason=validation["reason"],
-        recommended_tools=["validate_query", "estimate_execution_risk"],
+        recommended_tools=["plan_or_execute_query"],
         confidence=intent.confidence,
     )

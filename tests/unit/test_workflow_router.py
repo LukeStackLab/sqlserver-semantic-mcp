@@ -38,4 +38,4 @@ def test_allowed_select_routes_to_direct_execute(policy):
 def test_disallowed_drop_routes_to_direct_validate(policy):
     dec = route_query("DROP TABLE dbo.Users", policy=policy)
     assert dec.route == "direct_validate"
-    assert "validate_query" in dec.recommended_tools
+    assert "plan_or_execute_query" in dec.recommended_tools

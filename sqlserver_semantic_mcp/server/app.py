@@ -18,10 +18,8 @@ logger = logging.getLogger(__name__)
 
 _WORKFLOW_TOOLS = frozenset({
     "plan_or_execute_query",
-    "preview_safe_query",
     "discover_relevant_tables",
     "suggest_next_tool",
-    "estimate_execution_risk",
     "bundle_context_for_next_step",
 })
 

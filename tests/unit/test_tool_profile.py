@@ -26,7 +26,7 @@ def test_profile_defaults_to_all_registers_every_group(base_env):
         "describe_object",
         "detect_lookup_tables",
         "get_execution_policy", "validate_sql_against_policy", "refresh_policy",
-        "validate_query", "run_safe_query",
+        "plan_or_execute_query",
         "refresh_schema_cache",
     }
     registered = set(_TOOL_REGISTRY.keys())
@@ -47,7 +47,7 @@ def test_profile_metadata_only_registers_two_tools(base_env, monkeypatch):
     assert names == {"get_tables", "describe_table"}
     assert "classify_table" not in names
     assert "describe_object" not in names
-    assert "run_safe_query" not in names
+    assert "plan_or_execute_query" not in names
 
 
 def test_profile_multiple_groups(base_env, monkeypatch):
@@ -64,7 +64,7 @@ def test_profile_multiple_groups(base_env, monkeypatch):
     assert "get_tables" in names
     assert "detect_lookup_tables" in names
     assert "describe_object" not in names
-    assert "run_safe_query" not in names
+    assert "plan_or_execute_query" not in names
 
 
 def test_profile_unknown_group_raises(base_env, monkeypatch):
@@ -91,4 +91,4 @@ def test_profile_empty_string_treated_as_all(base_env, monkeypatch):
 
     names = set(_TOOL_REGISTRY.keys())
     assert "get_tables" in names
-    assert "run_safe_query" in names
+    assert "plan_or_execute_query" in names

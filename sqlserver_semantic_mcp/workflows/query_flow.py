@@ -44,9 +44,7 @@ def plan_or_execute_query(
             detail=detail,
             confidence=payload["intent"]["confidence"],
             next_action=payload["next_action"],
-            recommended_tool=(
-                "plan_or_execute_query" if payload["allowed"] else "validate_query"
-            ),
+            recommended_tool="plan_or_execute_query",
             data={
                 "path": "direct_validate", "executed": False,
                 "risk_level": risk_level, "risks": risks, **payload,
@@ -61,9 +59,7 @@ def plan_or_execute_query(
             kind="plan_or_execute_query",
             detail=detail,
             next_action=preview["next_action"],
-            recommended_tool=(
-                "plan_or_execute_query" if preview["allowed"] else "validate_query"
-            ),
+            recommended_tool="plan_or_execute_query",
             data={"path": "dry_run", "executed": False, **preview},
         ).to_dict()
 
@@ -99,7 +95,7 @@ def plan_or_execute_query(
             detail=detail,
             confidence=decision.confidence,
             next_action=payload["next_action"],
-            recommended_tool="validate_query",
+            recommended_tool="plan_or_execute_query",
             data={
                 "path": "direct_validate",
                 "executed": False,

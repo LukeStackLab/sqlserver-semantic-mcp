@@ -9,7 +9,7 @@ from .router import route_query
 from .query_flow import plan_or_execute_query
 from .discovery_flow import discover_relevant_tables
 from .bundle import bundle_context_for_next_step
-from .recommendations import suggest_next_tool, estimate_execution_risk
+from .recommendations import suggest_next_tool
 from .facade import WorkflowFacade
 
 __all__ = [
@@ -21,6 +21,5 @@ __all__ = [
     "discover_relevant_tables",
     "bundle_context_for_next_step",
     "suggest_next_tool",
-    "estimate_execution_risk",
     "WorkflowFacade",
 ]

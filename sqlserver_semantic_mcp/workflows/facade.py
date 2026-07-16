@@ -9,7 +9,7 @@ from ..services.query_service import QueryService
 from .bundle import bundle_context_for_next_step
 from .discovery_flow import discover_relevant_tables
 from .query_flow import plan_or_execute_query
-from .recommendations import estimate_execution_risk, suggest_next_tool
+from .recommendations import suggest_next_tool
 from .router import route_query
 
 
@@ -57,33 +57,8 @@ class WorkflowFacade:
             cfg=self.cfg,
         )
 
-    def preview_safe_query(
-        self,
-        query: str,
-        *,
-        max_rows: Optional[int] = None,
-    ) -> dict:
-        preview = self.query.preview_query(
-            query, max_rows=max_rows, database=self.cfg.mssql_database,
-        )
-        return {
-            "kind": "preview_safe_query",
-            "detail": "brief",
-            "next_action": preview["next_action"],
-            "recommended_tool": (
-                "plan_or_execute_query" if preview["allowed"]
-                else "validate_query"
-            ),
-            "data": preview,
-        }
-
     def suggest_next_tool(self, **kwargs) -> dict:
         return suggest_next_tool(policy=self.policy, cfg=self.cfg, **kwargs)
-
-    def estimate_execution_risk(self, query: str) -> dict:
-        return estimate_execution_risk(
-            query, policy=self.policy, cfg=self.cfg,
-        )
 
     # ---- async helpers ------------------------------------------------------
 

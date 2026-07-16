@@ -21,13 +21,31 @@ def test_registrations_load(monkeypatch):
         # policy
         "get_execution_policy", "validate_sql_against_policy", "refresh_policy",
         # query
-        "validate_query", "run_safe_query",
+        "plan_or_execute_query",
         # cache
         "refresh_schema_cache",
     ]
     for name in expected:
         assert name in _TOOL_REGISTRY, f"tool not registered: {name}"
     assert len(_TOOL_REGISTRY) >= len(expected)
+
+
+def test_query_group_consolidated(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_SERVER", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_DATABASE", "x")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_USER", "u")
+    monkeypatch.setenv("SEMANTIC_MCP_MSSQL_PASSWORD", "p")
+    from sqlserver_semantic_mcp.config import reset_config
+    reset_config()
+    from sqlserver_semantic_mcp.server.app import _TOOL_REGISTRY
+    from sqlserver_semantic_mcp.server.tools import register_all
+    _TOOL_REGISTRY.clear()
+    register_all()
+    names = set(_TOOL_REGISTRY.keys())
+    assert "plan_or_execute_query" in names
+    for gone in ("validate_query", "run_safe_query",
+                 "preview_safe_query", "estimate_execution_risk"):
+        assert gone not in names
 
 
 def test_get_columns_tool_removed(monkeypatch):

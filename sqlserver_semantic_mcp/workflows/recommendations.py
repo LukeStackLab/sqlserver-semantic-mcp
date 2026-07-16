@@ -52,7 +52,7 @@ def suggest_next_tool(
         next_action = "trace_impact"
         rationale.append("object context available — trace its dependencies")
     elif have_join_path:
-        recommended = ["plan_or_execute_query", "preview_safe_query"]
+        recommended = ["plan_or_execute_query"]
         next_action = "execute"
         rationale.append("join path ready — draft SQL and execute via fast path")
     elif have_candidates:
@@ -76,86 +76,5 @@ def suggest_next_tool(
         data={
             "recommended_tools": recommended,
             "rationale": rationale,
-        },
-    ).to_dict()
-
-
-def estimate_execution_risk(
-    query: str,
-    *,
-    policy: PolicyService,
-    cfg: Optional[Config] = None,
-) -> dict:
-    cfg = cfg or get_config()
-    intent = policy.analyze(query)
-    constraints = policy.current_policy().constraints
-
-    risks: list[dict] = []
-    level = "low"
-
-    def bump(new_level: str) -> None:
-        nonlocal level
-        order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-        if order[new_level] > order[level]:
-            level = new_level
-
-    if intent.risk_level.value in ("critical", "high"):
-        bump(intent.risk_level.value)
-        risks.append({
-            "kind": "policy_risk",
-            "detail": f"operation {intent.primary_operation.value} is "
-                      f"{intent.risk_level.value}-risk",
-        })
-
-    if intent.is_multi_statement and not constraints.allow_multi_statement:
-        bump("high")
-        risks.append({
-            "kind": "policy_risk",
-            "detail": "multi-statement query is disallowed",
-        })
-
-    if intent.has_unqualified_tables:
-        bump("medium")
-        risks.append({
-            "kind": "schema_qualification_risk",
-            "detail": "query references unqualified tables",
-        })
-
-    if intent.contains_dynamic_sql:
-        bump("high")
-        risks.append({
-            "kind": "dynamic_sql_risk",
-            "detail": "query executes dynamic SQL; analyzer cannot inspect it",
-        })
-
-    if intent.primary_operation.value == "SELECT" \
-            and not intent.has_top_clause \
-            and not intent.has_where_clause:
-        bump("medium")
-        risks.append({
-            "kind": "payload_risk",
-            "detail": "SELECT without TOP or WHERE may return large payloads",
-        })
-
-    validation = policy.validate(query, database=cfg.mssql_database)
-    allowed = validation["allowed"]
-
-    return ToolEnvelope(
-        kind="estimate_execution_risk",
-        detail="brief",
-        confidence=intent.confidence,
-        next_action="execute" if allowed and level in ("low", "medium") else "revise_query",
-        recommended_tool=(
-            "plan_or_execute_query" if allowed else "validate_query"
-        ),
-        data={
-            "operation": intent.primary_operation.value,
-            "tables": intent.affected_tables,
-            "risk_level": level,
-            "risks": risks,
-            "allowed_by_policy": allowed,
-            "policy_reason": validation["reason"],
-            "max_rows_returned": constraints.max_rows_returned,
-            "max_rows_affected": constraints.max_rows_affected,
         },
     ).to_dict()
