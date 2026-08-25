@@ -42,10 +42,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp"
-Repository = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp"
-Issues = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp/issues"
-Documentation = "https://github.com/lukedev999-boom/sqlserver-semantic-mcp#readme"
+Homepage = "https://github.com/LukeStackLab/sqlserver-semantic-mcp"
+Repository = "https://github.com/LukeStackLab/sqlserver-semantic-mcp"
+Issues = "https://github.com/LukeStackLab/sqlserver-semantic-mcp/issues"
+Documentation = "https://github.com/LukeStackLab/sqlserver-semantic-mcp#readme"
 
 [project.optional-dependencies]
 dev = [

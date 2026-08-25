@@ -114,7 +114,7 @@ SEMANTIC_MCP_MSSQL_PASSWORD=YourPassword \
 只想使用 server 的話請略過此段。
 
 ```bash
-git clone https://github.com/lukedev999-boom/sqlserver-semantic-mcp.git
+git clone https://github.com/LukeStackLab/sqlserver-semantic-mcp.git
 cd sqlserver-semantic-mcp
 cp .env.example .env             # 然後填入 MSSQL 認證
 uv sync --dev                    # 建立 .venv 並安裝 dev 依賴

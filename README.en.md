@@ -114,7 +114,7 @@ You should see startup log lines confirming cache initialisation and tool regist
 Skip this section if you just want to use the server.
 
 ```bash
-git clone https://github.com/lukedev999-boom/sqlserver-semantic-mcp.git
+git clone https://github.com/LukeStackLab/sqlserver-semantic-mcp.git
 cd sqlserver-semantic-mcp
 cp .env.example .env             # then fill in MSSQL credentials
 uv sync --dev                    # creates .venv with dev deps
